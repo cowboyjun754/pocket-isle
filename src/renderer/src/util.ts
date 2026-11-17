@@ -2,6 +2,39 @@ import type { AddResult } from '../../shared/types'
 
 export const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tif', 'tiff', 'heic'])
 
+export const TEXT_PREVIEW_EXTS = new Set([
+  'txt',
+  'md',
+  'markdown',
+  'json',
+  'csv',
+  'tsv',
+  'log',
+  'yaml',
+  'yml',
+  'xml',
+  'html',
+  'htm',
+  'css',
+  'js',
+  'ts',
+  'tsx',
+  'jsx',
+  'py',
+  'c',
+  'cpp',
+  'h',
+  'java',
+  'go',
+  'rs',
+  'sql',
+  'ini',
+  'toml',
+  'bat',
+  'ps1',
+  'sh'
+])
+
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`

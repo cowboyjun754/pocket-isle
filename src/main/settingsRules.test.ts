@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Settings } from '../shared/types'
-import { COPY_LIMIT_MAX_MB, COPY_LIMIT_MIN_MB, applySettingsPatch } from './settingsRules'
+import {
+  COPY_LIMIT_MAX_MB,
+  COPY_LIMIT_MIN_MB,
+  FOCUS_MAX_MINUTES,
+  FOCUS_MIN_MINUTES,
+  REST_MAX_MINUTES,
+  REST_MIN_MINUTES,
+  applySettingsPatch
+} from './settingsRules'
 
 const BASE: Settings = {
   alwaysOnTop: true,
@@ -38,5 +46,25 @@ describe('applySettingsPatch', () => {
 
     const same = applySettingsPatch(BASE, { alwaysOnTop: true }, false)
     expect(same.alwaysOnTopChanged).toBe(false)
+  })
+
+  it('校验并限制 focusMinutes、restMinutes 与 focusNotify', () => {
+    expect(applySettingsPatch(BASE, { focusMinutes: 0 }, false).next.focusMinutes).toBe(
+      FOCUS_MIN_MINUTES
+    )
+    expect(applySettingsPatch(BASE, { focusMinutes: 300 }, false).next.focusMinutes).toBe(
+      FOCUS_MAX_MINUTES
+    )
+    expect(applySettingsPatch(BASE, { focusMinutes: 45.4 }, false).next.focusMinutes).toBe(45)
+
+    expect(applySettingsPatch(BASE, { restMinutes: -5 }, false).next.restMinutes).toBe(
+      REST_MIN_MINUTES
+    )
+    expect(applySettingsPatch(BASE, { restMinutes: 120 }, false).next.restMinutes).toBe(
+      REST_MAX_MINUTES
+    )
+    expect(applySettingsPatch(BASE, { restMinutes: 12 }, false).next.restMinutes).toBe(12)
+
+    expect(applySettingsPatch(BASE, { focusNotify: false }, false).next.focusNotify).toBe(false)
   })
 })

@@ -43,21 +43,21 @@ export const DOCK_POLY: Pt[] = [
   { x: 4, y: 160 }
 ]
 
-/** 包裹落点（底部中心，精准落在手绘木栈桥板面上） */
+/** 包裹落点（底部中心，精准落在手绘木栈桥板面上并避开系船桩麻绳） */
 export const DOCK_SLOTS: Pt[] = [
-  { x: 42, y: 118 },
-  { x: 68, y: 120 },
-  { x: 94, y: 122 }
+  { x: 47, y: 117 },
+  { x: 70, y: 120 },
+  { x: 93, y: 123 }
 ]
 
-/** 数字角标圆心（位于栈桥最前端系船桩上方，停靠态 56px 内完整露出） */
-export const DOCK_BADGE: Pt = { x: 20, y: 84 }
+/** 数字角标圆心（位于栈桥前端系船桩斜上方，停靠态 56px 内完整露出且不遮挡麻绳） */
+export const DOCK_BADGE: Pt = { x: 17, y: 74 }
 
 /** 水獭默认落脚点（栈桥根部草地上） */
 export const OTTER_HOME: Pt = { x: 156, y: 148 }
 
-/** 停靠态下水獭稳稳坐在栈桥第 2-3 块木板正中央的位置 */
-export const OTTER_PEEK: Pt = { x: 38, y: 117 }
+/** 停靠态下水獭稳稳坐在栈桥第 2-3 块木板中央的位置（完整留在 56px 视口内） */
+export const OTTER_PEEK: Pt = { x: 35, y: 118 }
 
 /** 计算某个停靠方向 + 展开档位下，画布相对于窗口的水平位移 translateX（px） */
 export function getStageOffsetX(side: DockSide, mode: ExpandMode): number {

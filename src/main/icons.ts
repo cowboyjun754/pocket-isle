@@ -6,29 +6,61 @@ import parcelScrollAsset from '../renderer/src/assets/parcel-scroll.png?asset'
 
 type RGB = [number, number, number]
 
-/** 生成一个带描边的圆形位图（BGRA，预乘 alpha），用于系统托盘图标 */
-function circleBitmap(size: number, fill: RGB, ring: RGB, ringRatio = 0.14): Buffer {
+/** 生成微型水彩停靠岛托盘图标（BGRA，预乘 alpha），在 16x16 托盘栏中辨识度高 */
+function blendPixel(buf: Buffer, size: number, x: number, y: number, col: RGB, alpha: number): void {
+  if (x < 0 || y < 0 || x >= size || y >= size || alpha <= 0) return
+  const a = Math.min(1, Math.max(0, alpha))
+  const i = (y * size + x) * 4
+  const inv = 1 - a
+  buf[i] = Math.round(buf[i] * inv + col[2] * a)
+  buf[i + 1] = Math.round(buf[i + 1] * inv + col[1] * a)
+  buf[i + 2] = Math.round(buf[i + 2] * inv + col[0] * a)
+  buf[i + 3] = Math.min(255, Math.round(buf[i + 3] * inv + 255 * a))
+}
+
+function islandTrayBitmap(size = 32): Buffer {
   const buf = Buffer.alloc(size * size * 4)
   const c = (size - 1) / 2
-  const R = size / 2 - 0.5
-  const ringW = Math.max(1, size * ringRatio)
+  const R = size / 2 - 0.8
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const d = Math.hypot(x - c, y - c)
-      const a = Math.min(1, Math.max(0, R - d + 0.5))
-      const col = d > R - ringW ? ring : fill
-      const i = (y * size + x) * 4
-      buf[i] = Math.round(col[2] * a)
-      buf[i + 1] = Math.round(col[1] * a)
-      buf[i + 2] = Math.round(col[0] * a)
-      buf[i + 3] = Math.round(255 * a)
+      const edge = Math.min(1, Math.max(0, R - d + 0.6))
+      if (edge <= 0) continue
+
+      let col: RGB = [148, 194, 219] // 海洋蓝
+      if (d > R - 1.5) col = [96, 74, 52] // 暖棕轮廓
+      else if (d > R - 3.3) col = [251, 242, 220] // 奶油白浪花
+
+      // 暖沙岸底弧
+      const sandD = ((x - c) / (size * 0.32)) ** 2 + ((y - (c + 1.5)) / (size * 0.26)) ** 2
+      if (sandD <= 1 && d <= R - 3.2) col = [238, 212, 170]
+
+      // 嫩绿草地小山坡
+      const grassD = ((x - c) / (size * 0.29)) ** 2 + ((y - (c - 0.8)) / (size * 0.21)) ** 2
+      if (grassD <= 1 && d <= R - 3.2) col = y < c - 1 ? [168, 200, 142] : [148, 184, 122]
+
+      blendPixel(buf, size, x, y, col, edge)
+
+      // 左侧小小木栈桥
+      if (x >= 5 && x <= 12 && y >= 17 && y <= 20) {
+        const isRim = y === 17 || y === 20 || x === 5
+        blendPixel(buf, size, x, y, isRim ? [104, 78, 52] : [220, 189, 144], 0.95)
+      }
+
+      // 山坡右上小红屋顶
+      if (x >= 17 && x <= 22 && y >= 10 && y <= 14) {
+        const roof = y <= 12 && Math.abs(x - 19.5) <= y - 9.2
+        if (roof) blendPixel(buf, size, x, y, [212, 126, 88], 0.98)
+        else if (y > 12 && x >= 18 && x <= 21) blendPixel(buf, size, x, y, [238, 216, 178], 0.98)
+      }
     }
   }
   return buf
 }
 
 export function makeTrayIcon(): NativeImage {
-  return nativeImage.createFromBitmap(circleBitmap(32, [168, 196, 154], [120, 160, 190]), {
+  return nativeImage.createFromBitmap(islandTrayBitmap(32), {
     width: 32,
     height: 32,
     scaleFactor: 2
@@ -55,7 +87,7 @@ export function makeDragIcon(kind: ParcelKind = 'envelope'): NativeImage {
     parcelDragIconCache.set(kind, resized)
     return resized
   }
-  return nativeImage.createFromBitmap(circleBitmap(32, [236, 217, 176], [169, 132, 90], 0.1), {
+  return nativeImage.createFromBitmap(islandTrayBitmap(32), {
     width: 32,
     height: 32,
     scaleFactor: 1

@@ -56,6 +56,9 @@ const DEFAULT_SETTINGS: Settings = {
   alwaysOnTop: true,
   openAtLogin: false,
   copyLimitMB: 2048,
+  focusMinutes: 25,
+  restMinutes: 5,
+  focusNotify: true,
   ai: {
     baseUrl: 'https://api.deepseek.com/v1',
     apiKey: '',
@@ -109,20 +112,40 @@ export class Store {
       if (existsSync(this.file)) {
         const raw = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<Data>
         const savedFocus = raw.focus ?? DEFAULT_FOCUS
+        const mergedSettings: Settings = {
+          ...DEFAULT_SETTINGS,
+          ...(raw.settings ?? {}),
+          ai: {
+            ...DEFAULT_SETTINGS.ai,
+            ...(raw.settings?.ai ?? {})
+          }
+        }
+        const focusMin =
+          typeof mergedSettings.focusMinutes === 'number' &&
+          Number.isFinite(mergedSettings.focusMinutes)
+            ? Math.max(1, Math.min(180, Math.round(mergedSettings.focusMinutes)))
+            : 25
+        const restMin =
+          typeof mergedSettings.restMinutes === 'number' &&
+          Number.isFinite(mergedSettings.restMinutes)
+            ? Math.max(1, Math.min(60, Math.round(mergedSettings.restMinutes)))
+            : 5
+        mergedSettings.focusMinutes = focusMin
+        mergedSettings.restMinutes = restMin
+        mergedSettings.focusNotify =
+          typeof mergedSettings.focusNotify === 'boolean' ? mergedSettings.focusNotify : true
+        const focusPhase = savedFocus.phase ?? 'idle'
+        const focusMs = focusMin * 60 * 1000
         return {
           ...DEFAULT_DATA,
           ...raw,
           items: Array.isArray(raw.items) ? raw.items : [],
-          settings: {
-            ...DEFAULT_SETTINGS,
-            ...(raw.settings ?? {}),
-            ai: {
-              ...DEFAULT_SETTINGS.ai,
-              ...(raw.settings?.ai ?? {})
-            }
-          },
+          settings: mergedSettings,
           decorations: {
-            ambience: raw.decorations?.ambience === 'night' ? 'night' : 'day',
+            ambience:
+              raw.decorations?.ambience === 'night' || raw.decorations?.ambience === 'rain'
+                ? raw.decorations.ambience
+                : 'day',
             enabled: {
               ...DEFAULT_DECORATIONS.enabled,
               ...(raw.decorations?.enabled ?? {})
@@ -140,6 +163,7 @@ export class Store {
             ...DEFAULT_FOCUS,
             ...savedFocus,
             running: false,
+            ...(focusPhase === 'idle' ? { remainingMs: focusMs, totalMs: focusMs } : {}),
             steps: Array.isArray(savedFocus.steps) ? savedFocus.steps : []
           },
           dockSide:

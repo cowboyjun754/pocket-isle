@@ -4,7 +4,7 @@ import type { DockSide, ExpandMode } from './shape'
 
 export type DecorationId = 'flowers' | 'bench' | 'lamp' | 'tree' | 'cabin' | 'windmill'
 export type OtterAction = 'idle' | 'receive' | 'read' | 'wave' | 'rest'
-export type AmbienceMode = 'day' | 'night'
+export type AmbienceMode = 'day' | 'night' | 'rain'
 export type ParcelKind = 'envelope' | 'box' | 'scroll'
 
 export interface FileSummary {
@@ -27,6 +27,8 @@ export interface DockItem {
   sourcePath: string
   /** 是否为自动复制的副本 */
   isCopy: boolean
+  /** 是否为文件夹引用 */
+  isDir?: boolean
   size: number
   mtimeMs: number
   addedAt: number
@@ -83,10 +85,21 @@ export interface Settings {
   openAtLogin: boolean
   /** 副本总容量上限（MB） */
   copyLimitMB: number
+  /** 默认专注时长（分钟，1..180） */
+  focusMinutes?: number
+  /** 默认休息时长（分钟，1..60） */
+  restMinutes?: number
+  /** 专注/休息结束时提示音与桌面通知 */
+  focusNotify?: boolean
   ai: AiConfig
 }
 
-export type SettingsPatch = Partial<Pick<Settings, 'alwaysOnTop' | 'openAtLogin' | 'copyLimitMB'>>
+export type SettingsPatch = Partial<
+  Pick<
+    Settings,
+    'alwaysOnTop' | 'openAtLogin' | 'copyLimitMB' | 'focusMinutes' | 'restMinutes' | 'focusNotify'
+  >
+>
 
 export interface AppEnv {
   isPackaged: boolean
@@ -148,11 +161,14 @@ export interface IsleApi {
   open(id: string): Promise<string>
   reveal(id: string): Promise<void>
   thumb(id: string, size: number): Promise<string | null>
+  readTextPreview(id: string): Promise<{ ok: boolean; content?: string; truncated?: boolean; message?: string }>
+  copyItemToClipboard(id: string): Promise<{ ok: boolean; message: string }>
   copyUsage(): Promise<{ used: number; limit: number }>
   getPose(): Promise<IslandPose>
   setExpandMode(mode: ExpandMode): void
   holdExpand(ms: number): void
   startDrag(ids: string[], kind?: ParcelKind): void
+  syncDragPassThrough(): void
   beginMoveIsland(): void
   stepMoveIsland(): void
   endMoveIsland(): void
@@ -186,7 +202,7 @@ export interface IsleApi {
   testAiConnection(cfg: AiConfig): Promise<{ ok: boolean; message: string }>
   aiOrganizeDock(ids?: string[]): Promise<AiOrganizeResult>
   aiJointSummary(ids: string[], focusPrompt?: string): Promise<AiJointSummaryResult>
-  aiBreakdownGoal(goal: string, docIds: string[]): Promise<AiBreakdownResult>
+  aiBreakdownGoal(goal: string, docIds: string[], durationMinutes?: number): Promise<AiBreakdownResult>
   aiRecommendDecor(moodPrompt?: string): Promise<{ ok: boolean; cancelled?: boolean; message: string }>
   cancelAi(): void
 
@@ -197,6 +213,7 @@ export interface IsleApi {
   onDecorChanged(cb: (d: DecorationState) => void): () => void
   onIslandMemoryChanged(cb: (m: IslandMemory) => void): () => void
   onFocusChanged(cb: (f: FocusState) => void): () => void
+  onFocusFinished(cb: (phase: 'focus' | 'rest') => void): () => void
   onOtterReact(cb: (r: OtterReactionPayload) => void): () => void
   onSettingsChanged(cb: (s: Settings) => void): () => void
   onDragEnded(cb: () => void): () => void

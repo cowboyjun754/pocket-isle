@@ -4,10 +4,12 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--cream);
+  background: linear-gradient(180deg, #fffaf0 0%, var(--cream) 28%, #faf0d8 100%);
   border: 2px solid var(--wood-d);
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(50, 36, 20, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 253, 246, 0.85),
+    0 10px 26px rgba(50, 36, 20, 0.22);
   overflow: hidden;
 }
 
@@ -421,18 +423,21 @@
   align-items: center;
   gap: 10px;
   padding: 7px 9px;
-  border-radius: 10px;
+  border-radius: 11px;
   border: 1.5px solid #e6d8bc;
-  background: #fffaf0;
+  background: linear-gradient(180deg, #fffcf4 0%, #fcf4e3 100%);
+  box-shadow: 0 1px 2px rgba(92, 68, 40, 0.06);
   cursor: grab;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 
 .dock-row:hover {
   border-color: var(--wood);
+  box-shadow: 0 2px 6px rgba(92, 68, 40, 0.11);
 }
 
 .dock-row.selected {
-  background: #eef4e8;
+  background: linear-gradient(180deg, #f3f9ee 0%, #e7f1df 100%);
   border-color: var(--sage-d);
 }
 
@@ -1038,6 +1043,172 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.preview-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.preview-bar-actions button {
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--wood);
+  background: var(--cream-2);
+  font-size: 11.5px;
+}
+
+.preview-bar-actions button:hover {
+  background: #f0dfbe;
+}
+
+.preview-text-wrap {
+  width: min(370px, 86vw);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview-truncated-tag {
+  font-size: 11px;
+  color: var(--ink-2);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--cream-2);
+  border: 1px solid #e4d4b6;
+}
+
+.preview-text-pre {
+  margin: 0;
+  max-height: 390px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #e0cfa9;
+  background: #fffdf8;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.btn-warn-lite {
+  background: #fae8df !important;
+  border-color: #d48872 !important;
+  color: #8f3a29 !important;
+}
+
+.joint-focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f3f7ef;
+  border-bottom: 1px solid #dbe6d4;
+}
+
+.joint-focus-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #426438;
+  white-space: nowrap;
+}
+
+.joint-focus-bar input {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid #bdd0b2;
+  background: #fffdf8;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.ai-stage-banner {
+  margin: 6px 12px 0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #eef4e7;
+  border: 1px solid #bdd1b0;
+  color: #3f6034;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.tag-dir {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #e6eff4;
+  border: 1px solid #adc6d6;
+  color: #31546b;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.focus-duration-bar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.focus-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+}
+
+.focus-presets button {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid #d5c3a3;
+  background: var(--cream);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.focus-presets button.active {
+  background: #e2ecd9;
+  border-color: var(--sage-d);
+  color: #2f4b26;
+  font-weight: 700;
+}
+
+.focus-custom-inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.focus-custom-inputs label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.focus-custom-inputs input {
+  width: 52px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  border: 1px solid #d5c3a3;
+  background: #fffdf8;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--ink);
+}
+
 
 .preview-bar div {
   display: flex;

@@ -3,6 +3,7 @@ import { chooseDropEffect, extractPathsFromDataTransfer } from '../../shared/dro
 import { getParcelKindForExt } from '../../shared/parcelKind'
 import type {
   AiConfig,
+  AmbienceMode,
   AppEnv,
   DecorationId,
   DecorationState,
@@ -13,7 +14,35 @@ import type {
   SettingsPatch
 } from '../../shared/types'
 import './panel.css'
-import { IMAGE_EXTS, describeResult, formatSize } from './util'
+import { IMAGE_EXTS, TEXT_PREVIEW_EXTS, describeResult, formatSize } from './util'
+
+function playFocusChime(): void {
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    if (!AudioCtx) return
+    const ctx = new AudioCtx()
+    const now = ctx.currentTime
+    const notes = [523.25, 659.25, 783.99]
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, now + i * 0.14)
+      gain.gain.setValueAtTime(0.0001, now + i * 0.14)
+      gain.gain.exponentialRampToValueAtTime(0.08, now + i * 0.14 + 0.03)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.14 + 0.55)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now + i * 0.14)
+      osc.stop(now + i * 0.14 + 0.6)
+    })
+    window.setTimeout(() => void ctx.close().catch(() => {}), 1400)
+  } catch {
+    /* 无可用音频设备时静默 */
+  }
+}
 
 type Tab = 'dock' | 'focus' | 'build' | 'settings'
 
@@ -46,13 +75,19 @@ export function Panel(): JSX.Element {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [groupDraft, setGroupDraft] = useState('')
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
-  const [preview, setPreview] = useState<{ item: DockItem; src: string } | null>(null)
+  const [preview, setPreview] = useState<{
+    item: DockItem
+    src?: string
+    text?: string
+    truncated?: boolean
+  } | null>(null)
   const [usage, setUsage] = useState<{ used: number; limit: number }>({ used: 0, limit: 0 })
   const [notice, setNotice] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [confirmingClear, setConfirmingClear] = useState(false)
   const [pinned, setPinned] = useState(false)
   const [dockQuery, setDockQuery] = useState('')
+  const [jointFocusPrompt, setJointFocusPrompt] = useState('')
   const [focusDocQuery, setFocusDocQuery] = useState('')
   const [jointCard, setJointCard] = useState<{
     title: string
@@ -65,6 +100,7 @@ export function Panel(): JSX.Element {
   const [aiJointLoading, setAiJointLoading] = useState(false)
   const [aiBreakingDown, setAiBreakingDown] = useState(false)
   const [aiDecorating, setAiDecorating] = useState(false)
+  const [aiProgressText, setAiProgressText] = useState('')
   const [testingAi, setTestingAi] = useState(false)
 
   // 专注计时与拆解
@@ -112,6 +148,9 @@ export function Panel(): JSX.Element {
     alwaysOnTop: true,
     openAtLogin: false,
     copyLimitMB: 2048,
+    focusMinutes: 25,
+    restMinutes: 5,
+    focusNotify: true,
     ai: {
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: '',
@@ -120,6 +159,10 @@ export function Panel(): JSX.Element {
     }
   })
   const [copyLimitDraft, setCopyLimitDraft] = useState('2048')
+  const [focusMinDraft, setFocusMinDraft] = useState('25')
+  const [restMinDraft, setRestMinDraft] = useState('5')
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
   const [appEnv, setAppEnv] = useState<AppEnv>({ isPackaged: false, shortcut: 'Control+Alt+Space' })
   const [aiCfg, setAiCfg] = useState<AiConfig>({
     baseUrl: 'https://api.deepseek.com/v1',
@@ -215,6 +258,8 @@ export function Panel(): JSX.Element {
     window.isle.getSettings().then((s) => {
       setSettings(s)
       setCopyLimitDraft(String(s.copyLimitMB))
+      setFocusMinDraft(String(s.focusMinutes ?? 25))
+      setRestMinDraft(String(s.restMinutes ?? 5))
       if (!aiDirtyRef.current) {
         setAiCfg(s.ai)
       }
@@ -239,11 +284,19 @@ export function Panel(): JSX.Element {
     const off5 = window.isle.onSettingsChanged((s) => {
       setSettings(s)
       setCopyLimitDraft(String(s.copyLimitMB))
+      setFocusMinDraft(String(s.focusMinutes ?? 25))
+      setRestMinDraft(String(s.restMinutes ?? 5))
       if (!aiDirtyRef.current) {
         setAiCfg(s.ai)
       }
     })
     const off6 = window.isle.onPanelPinnedChanged(setPinned)
+    const off7 = window.isle.onFocusFinished((finishedPhase) => {
+      if (settingsRef.current.focusNotify !== false) {
+        playFocusChime()
+      }
+      setNotice(finishedPhase === 'focus' ? '本轮专注结束，记得站起来歇会儿~' : '休息结束啦，随时开始下一轮！')
+    })
 
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -290,6 +343,7 @@ export function Panel(): JSX.Element {
       off4()
       off5()
       off6()
+      off7()
       window.removeEventListener('keydown', onKey)
       if (planSyncTimerRef.current) {
         window.clearTimeout(planSyncTimerRef.current)
@@ -366,8 +420,22 @@ export function Panel(): JSX.Element {
   }
 
   const onPreview = async (it: DockItem): Promise<void> => {
-    const src = (await window.isle.thumb(it.id, 720)) ?? thumbs[it.id]
-    if (src) setPreview({ item: it, src })
+    if (it.available === false || it.isDir) return
+    if (IMAGE_EXTS.has(it.ext)) {
+      const src = (await window.isle.thumb(it.id, 720)) ?? thumbs[it.id]
+      if (src) setPreview({ item: it, src })
+      return
+    }
+    if (TEXT_PREVIEW_EXTS.has(it.ext)) {
+      const res = await window.isle.readTextPreview(it.id)
+      if (res.ok) setPreview({ item: it, text: res.content ?? '', truncated: res.truncated })
+      else setNotice(res.message || '无法预览文件内容')
+    }
+  }
+
+  const onCopyItem = async (it: DockItem): Promise<void> => {
+    const res = await window.isle.copyItemToClipboard(it.id)
+    setNotice(res.message)
   }
 
   const onDrop = async (e: React.DragEvent): Promise<void> => {
@@ -383,6 +451,13 @@ export function Panel(): JSX.Element {
 
   // ---------- AI 动作 ----------
 
+  const startAiProgress = (seq: number, initial: string, nextStep: string): number => {
+    setAiProgressText(initial)
+    return window.setTimeout(() => {
+      if (aiReqSeqRef.current === seq) setAiProgressText(nextStep)
+    }, 1100)
+  }
+
   const cancelActiveAi = (): void => {
     ++aiReqSeqRef.current
     window.isle.cancelAi()
@@ -390,6 +465,7 @@ export function Panel(): JSX.Element {
     setAiJointLoading(false)
     setAiBreakingDown(false)
     setAiDecorating(false)
+    setAiProgressText('')
     setNotice('正在取消 AI 请求...')
   }
 
@@ -397,6 +473,7 @@ export function Panel(): JSX.Element {
     if (aiOrganizing || aiJointLoading) return
     const seq = ++aiReqSeqRef.current
     setAiOrganizing(true)
+    const stageTimer = startAiProgress(seq, '正在读取文件正文与属性…', '水獭正在归纳分组与要点…')
     try {
       const targetIds = selected.size > 0 ? [...selected] : undefined
       const res = await window.isle.aiOrganizeDock(targetIds)
@@ -406,7 +483,11 @@ export function Panel(): JSX.Element {
         setTab('settings')
       }
     } finally {
-      if (aiReqSeqRef.current === seq) setAiOrganizing(false)
+      window.clearTimeout(stageTimer)
+      if (aiReqSeqRef.current === seq) {
+        setAiOrganizing(false)
+        setAiProgressText('')
+      }
     }
   }
 
@@ -423,8 +504,12 @@ export function Panel(): JSX.Element {
     }
     const seq = ++aiReqSeqRef.current
     setAiJointLoading(true)
+    const stageTimer = startAiProgress(seq, '正在提取选中文件文本…', '水獭正在对比整理联合速览…')
     try {
-      const res = await window.isle.aiJointSummary(targetIds)
+      const res = await window.isle.aiJointSummary(
+        targetIds,
+        jointFocusPrompt.trim() || undefined
+      )
       if (aiReqSeqRef.current !== seq && res.cancelled) return
       setNotice(res.message)
       if (!res.ok && !res.cancelled && res.message.includes('设置')) {
@@ -439,7 +524,11 @@ export function Panel(): JSX.Element {
         })
       }
     } finally {
-      if (aiReqSeqRef.current === seq) setAiJointLoading(false)
+      window.clearTimeout(stageTimer)
+      if (aiReqSeqRef.current === seq) {
+        setAiJointLoading(false)
+        setAiProgressText('')
+      }
     }
   }
 
@@ -447,10 +536,12 @@ export function Panel(): JSX.Element {
     if (aiBreakingDown) return
     flushPendingPlan()
     const seq = ++aiReqSeqRef.current
+    const focusMins = settings.focusMinutes ?? 25
     setAiBreakingDown(true)
+    const stageTimer = startAiProgress(seq, '正在读取关联资料…', `水獭正在拆解 ${focusMins} 分钟步骤…`)
     try {
       const docIds = focusDocIds.size > 0 ? [...focusDocIds] : items.slice(-5).map((i) => i.id)
-      const res = await window.isle.aiBreakdownGoal(focus.goal, docIds)
+      const res = await window.isle.aiBreakdownGoal(focus.goal, docIds, focusMins)
       if (aiReqSeqRef.current !== seq && res.cancelled) return
       setNotice(res.message)
       if (!res.ok && !res.cancelled && res.message.includes('设置')) {
@@ -467,7 +558,11 @@ export function Panel(): JSX.Element {
         commitFocusPlan(nextGoal, nextSteps, true)
       }
     } finally {
-      if (aiReqSeqRef.current === seq) setAiBreakingDown(false)
+      window.clearTimeout(stageTimer)
+      if (aiReqSeqRef.current === seq) {
+        setAiBreakingDown(false)
+        setAiProgressText('')
+      }
     }
   }
 
@@ -486,7 +581,7 @@ export function Panel(): JSX.Element {
   }
 
   const applyDecorPreset = (
-    ambience: 'day' | 'night',
+    ambience: AmbienceMode,
     onList: DecorationId[],
     label: string
   ): void => {
@@ -503,11 +598,36 @@ export function Panel(): JSX.Element {
     const next = await window.isle.updateSettings(patch)
     setSettings(next)
     setCopyLimitDraft(String(next.copyLimitMB))
+    setFocusMinDraft(String(next.focusMinutes ?? 25))
+    setRestMinDraft(String(next.restMinutes ?? 5))
     if (typeof patch.copyLimitMB === 'number') {
       const u = await window.isle.copyUsage()
       setUsage(u)
     }
     if (msg) setNotice(msg)
+  }
+
+  const applyFocusDurations = async (nextFocus?: number, nextRest?: number): Promise<void> => {
+    const patch: SettingsPatch = {}
+    if (typeof nextFocus === 'number') {
+      if (!Number.isFinite(nextFocus) || nextFocus < 1 || nextFocus > 180) {
+        setFocusMinDraft(String(settings.focusMinutes ?? 25))
+        setNotice('专注时长请输入 1 ~ 180 分钟')
+        return
+      }
+      patch.focusMinutes = Math.round(nextFocus)
+    }
+    if (typeof nextRest === 'number') {
+      if (!Number.isFinite(nextRest) || nextRest < 1 || nextRest > 60) {
+        setRestMinDraft(String(settings.restMinutes ?? 5))
+        setNotice('休息时长请输入 1 ~ 60 分钟')
+        return
+      }
+      patch.restMinutes = Math.round(nextRest)
+    }
+    if (Object.keys(patch).length > 0) {
+      await applySettingsPatch(patch)
+    }
   }
 
   const applyCopyLimitMB = async (mb: number): Promise<void> => {
@@ -520,6 +640,9 @@ export function Panel(): JSX.Element {
   }
 
   const copyCount = items.filter((i) => i.isCopy).length
+  const unavailableIds = items.filter((i) => i.available === false).map((i) => i.id)
+  const focusMins = settings.focusMinutes ?? 25
+  const restMins = settings.restMinutes ?? 5
 
   return (
     <div
@@ -619,6 +742,20 @@ export function Panel(): JSX.Element {
               {selected.size > 0 && !confirmingClear && !(aiOrganizing || aiJointLoading) && (
                 <button onClick={() => window.isle.remove([...selected])}>移除所选</button>
               )}
+              {unavailableIds.length > 0 &&
+                !confirmingClear &&
+                !(aiOrganizing || aiJointLoading) && (
+                  <button
+                    className="btn-warn-lite"
+                    title="移除所有原文件已不存在的失效条目（不删除磁盘文件）"
+                    onClick={() => {
+                      window.isle.remove(unavailableIds)
+                      setNotice(`已清理 ${unavailableIds.length} 个失效条目`)
+                    }}
+                  >
+                    清理失效 ({unavailableIds.length})
+                  </button>
+                )}
               {items.length > 0 && !confirmingClear && !(aiOrganizing || aiJointLoading) && (
                 <button
                   onClick={() => {
@@ -665,6 +802,24 @@ export function Panel(): JSX.Element {
                 </button>
               )}
             </div>
+          )}
+
+          {selected.size >= 2 && !confirmingClear && (
+            <div className="joint-focus-bar">
+              <span className="joint-focus-label">✦ 对比侧重：</span>
+              <input
+                value={jointFocusPrompt}
+                placeholder="可选，如：对比报价差异 / 提取共同待办…"
+                onChange={(e) => setJointFocusPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !aiJointLoading && !aiOrganizing) handleAiJointSummary()
+                }}
+              />
+            </div>
+          )}
+
+          {aiProgressText && (aiOrganizing || aiJointLoading) && (
+            <div className="ai-stage-banner">{aiProgressText}</div>
           )}
 
           <div
@@ -743,6 +898,8 @@ export function Panel(): JSX.Element {
 
                   {groupItems.map((it) => {
                     const isImg = IMAGE_EXTS.has(it.ext)
+                    const isText = !it.isDir && TEXT_PREVIEW_EXTS.has(it.ext)
+                    const canPreview = isImg || isText
                     const unavailable = it.available === false
                     const showSummary = expandedSummaryId === it.id
                     return (
@@ -757,19 +914,27 @@ export function Panel(): JSX.Element {
                           onDragStart={(e) => onRowDragStart(it, e)}
                         >
                           <div
-                            className={`row-thumb ${isImg && !unavailable ? 'clickable' : ''}`}
+                            className={`row-thumb ${canPreview && !unavailable ? 'clickable' : ''}`}
                             onClick={(e) => {
-                              if (isImg && !unavailable) {
+                              if (canPreview && !unavailable) {
                                 e.stopPropagation()
                                 onPreview(it)
                               }
                             }}
-                            title={isImg ? '点击放大预览' : undefined}
+                            title={
+                              canPreview && !unavailable
+                                ? isImg
+                                  ? '点击放大预览'
+                                  : '点击快速预览文本内容'
+                                : undefined
+                            }
                           >
                             {thumbs[it.id] ? (
                               <img src={thumbs[it.id]} alt="" draggable={false} />
                             ) : (
-                              <span>{(it.ext || '文件').slice(0, 4).toUpperCase()}</span>
+                              <span>
+                                {it.isDir ? 'DIR' : (it.ext || '文件').slice(0, 4).toUpperCase()}
+                              </span>
                             )}
                           </div>
 
@@ -778,9 +943,14 @@ export function Panel(): JSX.Element {
                               {it.name}
                             </div>
                             <div className="row-meta">
-                              <span>{(it.ext || '文件').toUpperCase()}</span>
-                              <span>·</span>
-                              <span>{formatSize(it.size)}</span>
+                              <span>{it.isDir ? '文件夹' : (it.ext || '文件').toUpperCase()}</span>
+                              {!it.isDir && (
+                                <>
+                                  <span>·</span>
+                                  <span>{formatSize(it.size)}</span>
+                                </>
+                              )}
+                              {it.isDir && <span className="tag-dir">快捷引用</span>}
                               {it.isCopy && (
                                 <span
                                   className="tag-copy"
@@ -844,6 +1014,28 @@ export function Panel(): JSX.Element {
                                 title="查看 AI 文件速览"
                               >
                                 速览
+                              </button>
+                            )}
+                            {isText && !unavailable && (
+                              <button
+                                title="在面板中快速预览文本前段"
+                                onClick={() => onPreview(it)}
+                              >
+                                预览
+                              </button>
+                            )}
+                            {!unavailable && (
+                              <button
+                                title={
+                                  isImg
+                                    ? '复制图片到剪贴板'
+                                    : isText
+                                      ? '复制文本内容到剪贴板'
+                                      : '复制文件/文件夹路径'
+                                }
+                                onClick={() => onCopyItem(it)}
+                              >
+                                复制
                               </button>
                             )}
                             {!unavailable && (
@@ -922,16 +1114,71 @@ export function Panel(): JSX.Element {
                   ? '🎉 本轮专注已完成！休息一下吧'
                   : focus.phase === 'rest'
                     ? '☕ 休息放松中'
-                    : '⏱ 准备开始新的一轮（25 分钟专注 + 5 分钟休息）'}
+                    : `⏱ 准备开始新的一轮（${focusMins} 分钟专注 + ${restMins} 分钟休息）`}
             </div>
             <div className="timer-digits">{formatClock(focus.remainingMs)}</div>
+            {focus.phase === 'idle' && (
+              <div className="focus-duration-bar">
+                <div className="focus-presets">
+                  {[15, 25, 45, 60].map((m) => (
+                    <button
+                      key={m}
+                      className={focusMins === m ? 'active' : ''}
+                      onClick={() => applyFocusDurations(m)}
+                    >
+                      {m}分
+                    </button>
+                  ))}
+                </div>
+                <div className="focus-custom-inputs">
+                  <label title="自定义专注时长（1～180 分钟）">
+                    <span>专注</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={180}
+                      value={focusMinDraft}
+                      onChange={(e) => setFocusMinDraft(e.target.value)}
+                      onBlur={() => applyFocusDurations(Number(focusMinDraft))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyFocusDurations(Number(focusMinDraft))
+                      }}
+                    />
+                    <span>分</span>
+                  </label>
+                  <label title="自定义休息时长（1～60 分钟）">
+                    <span>休息</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={restMinDraft}
+                      onChange={(e) => setRestMinDraft(e.target.value)}
+                      onBlur={() => applyFocusDurations(undefined, Number(restMinDraft))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyFocusDurations(undefined, Number(restMinDraft))
+                      }}
+                    />
+                    <span>分</span>
+                  </label>
+                </div>
+              </div>
+            )}
             <div className="timer-controls">
               {focus.phase === 'idle' && (
                 <button
                   className="btn-primary"
-                  onClick={() => window.isle.focusControl('start_focus', 25)}
+                  onClick={async () => {
+                    const n = Number(focusMinDraft)
+                    const useMins =
+                      Number.isFinite(n) && n >= 1 && n <= 180 ? Math.round(n) : focusMins
+                    if (useMins !== focusMins) {
+                      await applyFocusDurations(useMins)
+                    }
+                    window.isle.focusControl('start_focus', useMins)
+                  }}
                 >
-                  开始 25 分钟专注
+                  开始 {Number.isFinite(Number(focusMinDraft)) && Number(focusMinDraft) >= 1 && Number(focusMinDraft) <= 180 ? Math.round(Number(focusMinDraft)) : focusMins} 分钟专注
                 </button>
               )}
               {(focus.phase === 'focus' || focus.phase === 'rest') && (
@@ -947,8 +1194,8 @@ export function Panel(): JSX.Element {
                     </button>
                   )}
                   {focus.phase === 'focus' && (
-                    <button onClick={() => window.isle.focusControl('start_rest', 5)}>
-                      转入 5 分钟休息
+                    <button onClick={() => window.isle.focusControl('start_rest', restMins)}>
+                      转入 {restMins} 分钟休息
                     </button>
                   )}
                   <button onClick={() => window.isle.focusControl('reset')}>结束本轮</button>
@@ -958,9 +1205,9 @@ export function Panel(): JSX.Element {
                 <>
                   <button
                     className="btn-primary"
-                    onClick={() => window.isle.focusControl('start_rest', 5)}
+                    onClick={() => window.isle.focusControl('start_rest', restMins)}
                   >
-                    开始 5 分钟休息
+                    开始 {restMins} 分钟休息
                   </button>
                   <button onClick={() => window.isle.focusControl('reset')}>稍后休息</button>
                 </>
@@ -979,7 +1226,7 @@ export function Panel(): JSX.Element {
                   className="btn-ai-pill"
                   disabled={aiBreakingDown}
                   onClick={handleAiBreakdown}
-                  title="结合当前目标和勾选的码头文件，生成适合 25 分钟完成的小步骤"
+                  title={`结合当前目标和勾选的码头文件，生成适合 ${focusMins} 分钟完成的小步骤`}
                 >
                   <SparkleIcon />
                   <span>{aiBreakingDown ? '正在拆解...' : 'AI 帮我拆解'}</span>
@@ -992,10 +1239,14 @@ export function Panel(): JSX.Element {
               </div>
             </div>
 
+            {aiProgressText && aiBreakingDown && (
+              <div className="ai-stage-banner">{aiProgressText}</div>
+            )}
+
             <div className="goal-input-row">
               <input
                 value={focus.goal}
-                placeholder="这 25 分钟想推进什么？（例如：读完需求文档并列出 3 个问题）"
+                placeholder={`这 ${focusMins} 分钟想推进什么？（例如：读完需求文档并列出 3 个问题）`}
                 onChange={(e) => commitFocusPlan(e.target.value, focus.steps)}
                 onBlur={flushPendingPlan}
                 onKeyDown={(e) => {
@@ -1136,6 +1387,12 @@ export function Panel(): JSX.Element {
                   🌙 夜晚暖光
                 </button>
                 <button
+                  className={decor.ambience === 'rain' ? 'active' : ''}
+                  onClick={() => window.isle.setDecorations({ ambience: 'rain' })}
+                >
+                  🌧 细雨听海
+                </button>
+                <button
                   onClick={() =>
                     applyDecorPreset('day', ['flowers', 'bench', 'tree'], '清爽办公')
                   }
@@ -1159,6 +1416,13 @@ export function Panel(): JSX.Element {
                   }
                 >
                   静谧夜读
+                </button>
+                <button
+                  onClick={() =>
+                    applyDecorPreset('rain', ['bench', 'lamp', 'tree', 'cabin'], '细雨听书')
+                  }
+                >
+                  细雨听书
                 </button>
               </div>
             </div>
@@ -1257,6 +1521,23 @@ export function Panel(): JSX.Element {
                   applySettingsPatch(
                     { openAtLogin: e.target.checked },
                     e.target.checked ? '已开启开机自启' : '已关闭开机自启'
+                  )
+                }
+              />
+            </label>
+
+            <label className="toggle-row">
+              <div>
+                <div className="toggle-title">专注与休息结束轻柔提醒</div>
+                <div className="toggle-desc">计时结束时播送轻柔三音铃声并弹出系统桌面通知</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.focusNotify !== false}
+                onChange={(e) =>
+                  applySettingsPatch(
+                    { focusNotify: e.target.checked },
+                    e.target.checked ? '已开启专注结束轻柔提醒' : '已静音专注结束提醒'
                   )
                 }
               />
@@ -1443,10 +1724,19 @@ export function Panel(): JSX.Element {
       {preview && (
         <div className="preview-mask" onClick={() => setPreview(null)}>
           <div className="preview-box" onClick={(e) => e.stopPropagation()}>
-            <img src={preview.src} alt={preview.item.name} draggable={false} />
+            {preview.src && <img src={preview.src} alt={preview.item.name} draggable={false} />}
+            {preview.text !== undefined && (
+              <div className="preview-text-wrap">
+                {preview.truncated && (
+                  <div className="preview-truncated-tag">内容较长，仅预览前 64 KB</div>
+                )}
+                <pre className="preview-text-pre">{preview.text || '（空文件）'}</pre>
+              </div>
+            )}
             <div className="preview-bar">
               <span>{preview.item.name}</span>
-              <div>
+              <div className="preview-bar-actions">
+                <button onClick={() => onCopyItem(preview.item)}>复制</button>
                 <button onClick={() => onOpen(preview.item)}>用默认程序打开</button>
                 <button onClick={() => setPreview(null)}>关闭</button>
               </div>

@@ -18,11 +18,42 @@ export class FocusController {
   constructor(
     private store: Store,
     private onUpdate: (state: FocusState) => void,
-    private onOtter: (react: OtterReactionPayload) => void
+    private onOtter: (react: OtterReactionPayload) => void,
+    private onFinished?: (phase: 'focus' | 'rest') => void
   ) {}
+
+  private configuredFocusMin(): number {
+    const raw = this.store.data.settings.focusMinutes
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+      return Math.min(Math.max(Math.round(raw), 1), 180)
+    }
+    return DEFAULT_FOCUS_MIN
+  }
+
+  private configuredRestMin(): number {
+    const raw = this.store.data.settings.restMinutes
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+      return Math.min(Math.max(Math.round(raw), 1), 60)
+    }
+    return DEFAULT_REST_MIN
+  }
 
   get state(): FocusState {
     return this.store.data.focus
+  }
+
+  /** 空闲状态下同步用户新设置的专注时长 */
+  syncIdleDuration(): void {
+    const f = this.store.data.focus
+    if (f.phase === 'idle' && !f.running) {
+      const ms = this.configuredFocusMin() * 60 * 1000
+      if (f.totalMs !== ms || f.remainingMs !== ms) {
+        f.totalMs = ms
+        f.remainingMs = ms
+        this.store.scheduleSave()
+        this.onUpdate(f)
+      }
+    }
   }
 
   control(
@@ -31,14 +62,18 @@ export class FocusController {
   ): FocusState {
     const f = this.store.data.focus
     if (action === 'start_focus') {
-      const mins = Math.min(Math.max(durationMinutes || DEFAULT_FOCUS_MIN, 1), 120)
+      const rawMin =
+        typeof durationMinutes === 'number' && Number.isFinite(durationMinutes) && durationMinutes > 0
+          ? durationMinutes
+          : this.configuredFocusMin()
+      const mins = Math.min(Math.max(Math.round(rawMin), 1), 180)
       const ms = mins * 60 * 1000
       f.phase = 'focus'
       f.totalMs = ms
       f.remainingMs = ms
       f.running = true
       this.startTicker()
-      this.onOtter({ action: 'read', bubble: '开始专注，我陪你一起~', durationMs: 3200 })
+      this.onOtter({ action: 'read', bubble: `开始 ${mins} 分钟专注，我陪你~`, durationMs: 3200 })
     } else if (action === 'pause') {
       this.syncElapsed()
       f.running = false
@@ -49,19 +84,28 @@ export class FocusController {
         this.startTicker()
       }
     } else if (action === 'start_rest') {
-      const mins = Math.min(Math.max(durationMinutes || DEFAULT_REST_MIN, 1), 60)
+      const rawMin =
+        typeof durationMinutes === 'number' && Number.isFinite(durationMinutes) && durationMinutes > 0
+          ? durationMinutes
+          : this.configuredRestMin()
+      const mins = Math.min(Math.max(Math.round(rawMin), 1), 60)
       const ms = mins * 60 * 1000
       f.phase = 'rest'
       f.totalMs = ms
       f.remainingMs = ms
       f.running = true
       this.startTicker()
-      this.onOtter({ action: 'rest', bubble: '伸个懒腰，休息一下吧~', durationMs: 4000 })
+      this.onOtter({ action: 'rest', bubble: `伸个懒腰，休息 ${mins} 分钟吧~`, durationMs: 4000 })
     } else if (action === 'reset') {
       this.stopTicker()
+      const rawMin =
+        typeof durationMinutes === 'number' && Number.isFinite(durationMinutes) && durationMinutes > 0
+          ? durationMinutes
+          : this.configuredFocusMin()
+      const mins = Math.min(Math.max(Math.round(rawMin), 1), 180)
       f.phase = 'idle'
       f.running = false
-      f.totalMs = DEFAULT_FOCUS_MIN * 60 * 1000
+      f.totalMs = mins * 60 * 1000
       f.remainingMs = f.totalMs
       this.onOtter({ action: 'idle' })
     }
@@ -128,15 +172,17 @@ export class FocusController {
           bubble: '本轮专注结束啦，喝口水歇会儿~',
           durationMs: 5000
         })
+        this.onFinished?.('focus')
       } else {
         f.phase = 'idle'
-        f.totalMs = DEFAULT_FOCUS_MIN * 60 * 1000
+        f.totalMs = this.configuredFocusMin() * 60 * 1000
         f.remainingMs = f.totalMs
         this.onOtter({
           action: 'wave',
           bubble: '休息完毕，随时可以继续~',
           durationMs: 4000
         })
+        this.onFinished?.('rest')
       }
       this.store.scheduleSave()
     }

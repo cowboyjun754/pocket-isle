@@ -11,6 +11,7 @@ import {
   STAGE,
   getStageOffsetX,
   inEllipse,
+  isInsideIsland,
   isOnWater,
   polyPoints
 } from '../../shared/shape'
@@ -30,6 +31,7 @@ import decoCabinUrl from './assets/deco-cabin.png'
 import decoFlowersUrl from './assets/deco-flowers.png'
 import decoLampUrl from './assets/deco-lamp.png'
 import decoTreeUrl from './assets/deco-tree.png'
+import decoWindmillBladesUrl from './assets/deco-windmill-blades.png'
 import decoWindmillUrl from './assets/deco-windmill.png'
 import islandHorizUrl from './assets/island-horiz.png'
 import otterIdleUrl from './assets/otter-idle.png'
@@ -67,6 +69,36 @@ const DECO_LAYERS: Array<{ id: DecorationId; src: string; className: string }> =
   { id: 'cabin', src: decoCabinUrl, className: 'deco-layer deco-cabin' },
   { id: 'windmill', src: decoWindmillUrl, className: 'deco-layer deco-windmill' }
 ]
+
+const DECO_Z_ORDER: Record<DecorationId, number> = {
+  bench: 166,
+  lamp: 168,
+  tree: 168,
+  flowers: 176,
+  cabin: 176,
+  windmill: 184
+}
+
+const RAIN_STREAKS: Array<{ x: number; y: number; len: number; delay: string; dur: string }> = [
+  { x: 96, y: 34, len: 10, delay: '0s', dur: '0.95s' },
+  { x: 118, y: 18, len: 12, delay: '0.32s', dur: '1.05s' },
+  { x: 142, y: 26, len: 9, delay: '0.64s', dur: '0.9s' },
+  { x: 168, y: 14, len: 11, delay: '0.15s', dur: '1.1s' },
+  { x: 194, y: 22, len: 10, delay: '0.48s', dur: '0.96s' },
+  { x: 220, y: 16, len: 12, delay: '0.78s', dur: '1.02s' },
+  { x: 246, y: 28, len: 10, delay: '0.24s', dur: '0.92s' },
+  { x: 270, y: 40, len: 11, delay: '0.56s', dur: '1.08s' },
+  { x: 106, y: 78, len: 11, delay: '0.42s', dur: '1.0s' },
+  { x: 152, y: 66, len: 9, delay: '0.84s', dur: '0.94s' },
+  { x: 204, y: 74, len: 12, delay: '0.08s', dur: '1.04s' },
+  { x: 256, y: 82, len: 10, delay: '0.52s', dur: '0.98s' }
+]
+
+const AMBIENCE_NEXT = {
+  day: 'night',
+  night: 'rain',
+  rain: 'day'
+} as const
 
 const PAT_REACTIONS: Array<{ action: OtterAction; anim: string; bubble: string }> = [
   { action: 'wave', anim: 'react-wave', bubble: '嗨~ 摸摸头 ♪' },
@@ -202,6 +234,8 @@ export function Island(): JSX.Element {
   draggingWinRef.current = draggingWin
   const focusRef = useRef(focus)
   focusRef.current = focus
+  const itemsRef = useRef(items)
+  itemsRef.current = items
   const draggingParcelRef = useRef<DraggingParcel | null>(null)
   const dragActiveIdRef = useRef<string | null>(null)
   const parcelCleanupRef = useRef<(() => void) | null>(null)
@@ -617,20 +651,31 @@ export function Island(): JSX.Element {
     window.addEventListener('blur', onCancel)
   }
 
+  const handleOutboundDragPosition = (e: React.DragEvent): void => {
+    const p = poseRef.current
+    const mode = p.side === 'free' ? 'full' : draggingWinRef.current ? 'full' : p.mode
+    if (isInsideIsland(e.clientX, e.clientY, p.side, mode, itemsRef.current.length > 0)) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = chooseDropEffect(e.dataTransfer.effectAllowed)
+    } else {
+      window.isle.syncDragPassThrough()
+    }
+  }
+
   const onDragEnter = (e: React.DragEvent): void => {
     if (draggingParcelRef.current) {
-      e.preventDefault()
+      handleOutboundDragPosition(e)
       return
     }
     e.preventDefault()
+    e.dataTransfer.dropEffect = chooseDropEffect(e.dataTransfer.effectAllowed)
     setDragOver(true)
     if (pose.mode === 'docked') window.isle.setExpandMode('peek')
   }
 
   const onDragOver = (e: React.DragEvent): void => {
     if (draggingParcelRef.current) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = chooseDropEffect(e.dataTransfer.effectAllowed)
+      handleOutboundDragPosition(e)
       return
     }
     e.preventDefault()
@@ -868,17 +913,18 @@ export function Island(): JSX.Element {
     effectiveMode === 'docked'
       ? OTTER_PEEK
       : effectiveMode === 'peek'
-        ? { x: 122, y: 132 }
+        ? { x: 121, y: 138 }
         : roamSpot ?? OTTER_HOME
 
-  const showNightGlow = lampOverride ?? (decor.ambience === 'night')
-  const showCabinWarm = cabinOverride ?? (decor.ambience === 'night')
+  const isWarmAmbience = decor.ambience === 'night' || decor.ambience === 'rain'
+  const showNightGlow = lampOverride ?? isWarmAmbience
+  const showCabinWarm = cabinOverride ?? isWarmAmbience
 
   return (
     <div
       className={`island-viewport side-${pose.side} mode-${effectiveMode} ambience-${decor.ambience} ${
-        dragOver ? 'is-dragover' : ''
-      } ${draggingWin ? 'is-dragging-win' : ''} ${
+        effectiveMode === 'docked' ? 'is-sleeping-fx' : ''
+      } ${dragOver ? 'is-dragover' : ''} ${draggingWin ? 'is-dragging-win' : ''} ${
         draggingParcel && pointerDragPos ? 'is-grabbing-parcel' : ''
       }`}
       style={{ width: STAGE.w, height: STAGE.h }}
@@ -909,7 +955,7 @@ export function Island(): JSX.Element {
           draggable={false}
         />
 
-        {/* 2 自由桌搭：6 件手绘装饰叠层 */}
+        {/* 2 自由桌搭：6 件手绘装饰叠层（按基底 Y 轴与水獭参与景深排序） */}
         <div className="layer-decorations">
           {DECO_LAYERS.map((d) =>
             decor.enabled[d.id] ? (
@@ -919,66 +965,105 @@ export function Island(): JSX.Element {
                 alt=""
                 draggable={false}
                 className={d.className}
+                style={{ zIndex: DECO_Z_ORDER[d.id] }}
               />
             ) : null
           )}
+          {decor.enabled.windmill && (
+            <img
+              src={decoWindmillBladesUrl}
+              alt=""
+              draggable={false}
+              className="deco-layer deco-windmill-blades"
+              style={{ zIndex: DECO_Z_ORDER.windmill + 1 }}
+            />
+          )}
           {showNightGlow && decor.enabled.lamp && (
-            <div className="night-glow night-glow-lamp" />
+            <>
+              <div className="night-glow night-glow-lamp" />
+              <div className="night-glow night-glow-lamp-ground" />
+            </>
           )}
           {showCabinWarm && decor.enabled.cabin && (
             <div className="night-glow night-glow-cabin" />
           )}
         </div>
 
-        {/* 2.5 岸上前景丰富物件：草坪野餐茶席、手绘小花苗、岸边海星与贝壳（填满前排草地与沙滩，点击均可互动） */}
+        {/* 2.5 岸上前景丰富物件：草坪野餐茶席、手绘小花苗、岸边海星与贝壳（水彩柔边与地面投影） */}
         {effectiveMode === 'full' && (
           <svg className="layer-foreground-svg" viewBox={`0 0 ${STAGE.w} ${STAGE.h}`} aria-hidden>
+            <defs>
+              <linearGradient id="picnicClothGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fdf1d6" />
+                <stop offset="100%" stopColor="#eedbb6" />
+              </linearGradient>
+              <linearGradient id="starfishGrad" x1="15%" y1="10%" x2="85%" y2="90%">
+                <stop offset="0%" stopColor="#f7ad8e" />
+                <stop offset="100%" stopColor="#de7d5f" />
+              </linearGradient>
+              <linearGradient id="shellGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#fdf0e8" />
+                <stop offset="100%" stopColor="#ebd0c2" />
+              </linearGradient>
+            </defs>
+
             {/* 用户点击草地种下的摇摆小花苗 */}
             {sprouts.map((sp) => (
               <g key={sp.id} className="grass-sprout" transform={`translate(${sp.x}, ${sp.y})`}>
-                <path d="M0,0 Q-3,-7 -6,-9 M0,0 Q3,-8 6,-9" stroke="#5b7a48" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+                <ellipse cx="0" cy="0.5" rx="4.5" ry="1.8" fill="rgba(58, 72, 42, 0.16)" />
+                <path
+                  d="M0,0 Q-3,-7 -6,-9 M0,0 Q3,-8 6,-9 M0,0 Q-0.5,-5 0.5,-7"
+                  stroke="#5b7a48"
+                  strokeWidth="1.3"
+                  fill="none"
+                  strokeLinecap="round"
+                />
                 {sp.kind === 0 && (
                   <>
-                    <circle cx="-6" cy="-10" r="3" fill="#fff8e7" stroke="#6b5640" strokeWidth="1" />
+                    <circle cx="-6" cy="-10" r="3.1" fill="#fff9ea" stroke="#6b5640" strokeWidth="0.95" />
                     <circle cx="-6" cy="-10" r="1.2" fill="#f3b64c" />
                   </>
                 )}
                 {sp.kind === 1 && (
                   <>
-                    <circle cx="6" cy="-10" r="3" fill="#f7b299" stroke="#6b5640" strokeWidth="1" />
-                    <circle cx="6" cy="-10" r="1.1" fill="#fff6e0" />
+                    <circle cx="6" cy="-10" r="3.1" fill="#f8b79e" stroke="#6b5640" strokeWidth="0.95" />
+                    <circle cx="6" cy="-10" r="1.15" fill="#fff6e0" />
                   </>
                 )}
                 {sp.kind === 2 && (
-                  <circle cx="0" cy="-9" r="2.8" fill="#ffe07d" stroke="#6b5640" strokeWidth="1" />
+                  <circle cx="0" cy="-9" r="2.9" fill="#ffe38a" stroke="#6b5640" strokeWidth="0.95" />
                 )}
               </g>
             ))}
 
-            {/* 右前方草地上的手绘野餐小茶席（暖白方巾 + 热茶杯 + 草莓小盘） */}
+            {/* 右前方草地上的手绘野餐小茶席（柔边投影 + 暖白方巾 + 热茶杯 + 草莓小盘） */}
             <g className="picnic-mat-group" transform="translate(232, 142)">
+              <polygon points="-21,5 6,-5 27,7 -1,17" fill="rgba(52, 64, 38, 0.16)" />
               {/* 野餐垫 */}
               <polygon
                 points="-22,4 6,-6 26,6 -2,16"
-                fill="#f8e8c8"
+                fill="url(#picnicClothGrad)"
                 stroke="#6b5238"
-                strokeWidth="1.5"
+                strokeWidth="1.25"
                 strokeLinejoin="round"
               />
               <polygon
                 points="-17,4 5,-4 21,5 -1,13"
                 fill="none"
                 stroke="#d98a6c"
-                strokeWidth="1"
+                strokeWidth="0.95"
                 strokeDasharray="3 2"
               />
               {/* 小木盘与红果子 */}
-              <ellipse cx="-5" cy="5" rx="7" ry="4" fill="#e5c494" stroke="#5e452b" strokeWidth="1.3" />
-              <circle cx="-6" cy="4" r="2.3" fill="#d9654c" stroke="#5e452b" strokeWidth="0.9" />
-              <circle cx="-2.5" cy="5" r="2" fill="#e67e5f" stroke="#5e452b" strokeWidth="0.9" />
+              <ellipse cx="-5" cy="5.5" rx="7" ry="3.8" fill="rgba(78, 56, 36, 0.14)" />
+              <ellipse cx="-5" cy="5" rx="7" ry="4" fill="#e5c494" stroke="#5e452b" strokeWidth="1.15" />
+              <circle cx="-6" cy="4" r="2.3" fill="#d9654c" stroke="#5e452b" strokeWidth="0.85" />
+              <circle cx="-2.5" cy="5" r="2" fill="#e67e5f" stroke="#5e452b" strokeWidth="0.85" />
+              <circle cx="-6.6" cy="3.3" r="0.6" fill="rgba(255,248,238,0.8)" />
               {/* 奶油白茶杯 */}
-              <ellipse cx="9" cy="2" rx="4.5" ry="2.6" fill="#fffaf0" stroke="#5e452b" strokeWidth="1.2" />
-              <path d="M5,2 L5.8,6.5 C6,8 12,8 12.2,6.5 L13,2" fill="#fdf4e0" stroke="#5e452b" strokeWidth="1.2" />
+              <ellipse cx="9" cy="6.6" rx="4.2" ry="1.8" fill="rgba(78, 56, 36, 0.16)" />
+              <path d="M5,2 L5.8,6.5 C6,8 12,8 12.2,6.5 L13,2" fill="#fdf4e0" stroke="#5e452b" strokeWidth="1.1" />
+              <ellipse cx="9" cy="2" rx="4.5" ry="2.6" fill="#fffaf0" stroke="#5e452b" strokeWidth="1.1" />
               <ellipse cx="9" cy="2.2" rx="3.2" ry="1.4" fill="#8b9e6b" />
               {picnicSteaming && (
                 <path
@@ -986,7 +1071,7 @@ export function Island(): JSX.Element {
                   d="M8,-1 Q6,-6 9,-9 M11,0 Q13,-5 10,-8"
                   fill="none"
                   stroke="#fffdf6"
-                  strokeWidth="1.3"
+                  strokeWidth="1.2"
                   strokeLinecap="round"
                 />
               )}
@@ -997,24 +1082,26 @@ export function Island(): JSX.Element {
               className={`shore-starfish ${starfishHop ? 'is-hopping' : ''}`}
               transform="translate(184, 168)"
             >
+              <ellipse cx="0.5" cy="4.2" rx="5.5" ry="2.2" fill="rgba(96, 68, 42, 0.18)" />
               <polygon
                 points="0,-6 1.8,-2 6,-1.5 2.6,1.4 3.6,5.5 0,3.2 -3.6,5.5 -2.6,1.4 -6,-1.5 -1.8,-2"
-                fill="#f09372"
+                fill="url(#starfishGrad)"
                 stroke="#6b4432"
-                strokeWidth="1.2"
+                strokeWidth="1.1"
                 strokeLinejoin="round"
               />
               <circle cx="0" cy="0" r="1" fill="#fff3e0" />
             </g>
             <g className="shore-shell" transform="translate(264, 158)">
+              <ellipse cx="0" cy="3.6" rx="4.8" ry="1.8" fill="rgba(96, 68, 42, 0.16)" />
               <path
                 d="M-5,2 C-5,-4 5,-4 5,2 L2,4 L-2,4 Z"
-                fill="#f9e3d8"
+                fill="url(#shellGrad)"
                 stroke="#6b5238"
-                strokeWidth="1.2"
+                strokeWidth="1.1"
               />
-              <line x1="-2" y1="-1" x2="-1" y2="3.5" stroke="#8a6c50" strokeWidth="0.9" />
-              <line x1="2" y1="-1" x2="1" y2="3.5" stroke="#8a6c50" strokeWidth="0.9" />
+              <line x1="-2" y1="-1" x2="-1" y2="3.5" stroke="#8a6c50" strokeWidth="0.85" />
+              <line x1="2" y1="-1" x2="1" y2="3.5" stroke="#8a6c50" strokeWidth="0.85" />
             </g>
           </svg>
         )}
@@ -1037,8 +1124,8 @@ export function Island(): JSX.Element {
             fill="url(#glowGrad)"
           />
 
-          {/* 海面周期性微光（白天淡银水波 / 夜晚月亮柔光闪烁） */}
-          <g className={`water-shimmers ${decor.ambience === 'night' ? 'is-night' : ''}`}>
+          {/* 海面周期性微光（白天淡银水波 / 夜晚月亮柔光闪烁 / 雨天微涟漪） */}
+          <g className={`water-shimmers is-${decor.ambience}`}>
             <ellipse className="water-glint glint-1" cx={112} cy={182} rx={9} ry={1.7} />
             <ellipse className="water-glint glint-2" cx={170} cy={192} rx={12} ry={2} />
             <ellipse className="water-glint glint-3" cx={242} cy={176} rx={8} ry={1.6} />
@@ -1059,6 +1146,25 @@ export function Island(): JSX.Element {
               <circle className="firefly ff-2" cx={164} cy={56} r={1.8} />
               <circle className="firefly ff-3" cx={208} cy={82} r={2} />
               <circle className="firefly ff-4" cx={248} cy={68} r={1.7} />
+            </g>
+          )}
+
+          {/* 细雨听海模式：轻柔斜雨丝与海面雨圈 */}
+          {effectiveMode === 'full' && decor.ambience === 'rain' && (
+            <g className="rain-curtain">
+              {RAIN_STREAKS.map((r, i) => (
+                <line
+                  key={i}
+                  className="rain-drop"
+                  x1={r.x}
+                  y1={r.y}
+                  x2={r.x - 4}
+                  y2={r.y + r.len}
+                  style={{ animationDelay: r.delay, animationDuration: r.dur }}
+                />
+              ))}
+              <ellipse className="rain-ring rr-1" cx={136} cy={182} rx={4} ry={1.8} />
+              <ellipse className="rain-ring rr-2" cx={226} cy={190} rx={5} ry={2.1} />
             </g>
           )}
 
@@ -1136,10 +1242,14 @@ export function Island(): JSX.Element {
           </div>
         )}
 
-        {/* 4 手绘水獭角色（支持在岛上各景点之间蹦跳移动） */}
+        {/* 4 手绘水獭角色（全展开时按 y 轴与装饰物同台参与前后遮挡） */}
         <div
           className={`otter-root action-${activeAction} ${reactAnim} otter-in-${effectiveMode}`}
-          style={{ left: otterPos.x, top: otterPos.y }}
+          style={{
+            left: otterPos.x,
+            top: otterPos.y,
+            zIndex: effectiveMode === 'full' ? 100 + Math.round(otterPos.y) : 240
+          }}
         >
           <div className="otter-breath">
             <img
@@ -1310,9 +1420,13 @@ export function Island(): JSX.Element {
             {items.length > 3 && (
               <button
                 className="dock-more-pill counter-flip"
-                style={{ left: 52, top: 84 }}
+                style={{ left: 46, top: 82 }}
                 onClick={onDockOpenPanel}
-                title={`还有 ${items.length - 3} 个暂存文件，点击查看全部`}
+                title={`还有 ${items.length - 3} 个暂存条目：\n${items
+                  .slice(0, -3)
+                  .slice(-4)
+                  .map((it) => `• ${it.name}`)
+                  .join('\n')}${items.length - 3 > 4 ? '\n…点击打开面板查看全部' : ''}`}
               >
                 +{items.length - 3}
               </button>
@@ -1390,14 +1504,21 @@ export function Island(): JSX.Element {
         >
           <button
             className="ambience-btn"
+            title={
+              decor.ambience === 'day'
+                ? '当前：晴天暖阳（点击切至微夜）'
+                : decor.ambience === 'night'
+                  ? '当前：星夜萤火（点击切至细雨）'
+                  : '当前：细雨听海（点击切回晴天）'
+            }
             onClick={(e) => {
               e.stopPropagation()
               window.isle.setDecorations({
-                ambience: decor.ambience === 'day' ? 'night' : 'day'
+                ambience: AMBIENCE_NEXT[decor.ambience] ?? 'day'
               })
             }}
           >
-            {decor.ambience === 'day' ? '☀' : '🌙'}
+            {decor.ambience === 'day' ? '☀' : decor.ambience === 'night' ? '🌙' : '🌧'}
           </button>
           <button
             className="hide-btn"

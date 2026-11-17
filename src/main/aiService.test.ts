@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { deflateRawSync, deflateSync } from 'zlib'
@@ -9,6 +9,7 @@ import {
   extractPdfText,
   mapOrganizeResponse,
   parseJsonLoose,
+  readTextFilePreview,
   readZipEntryText,
   requiresApiKey,
   type ExtractedDoc
@@ -266,5 +267,36 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     expect(requiresApiKey('localhost:11434/v1')).toBe(false)
     expect(requiresApiKey('http://127.0.0.1:1234/v1')).toBe(false)
     expect(requiresApiKey('https://api.deepseek.com/v1')).toBe(true)
+  })
+
+  it('readTextFilePreview 与 extractFileSnippet 支持快速截断预览及文件夹清单识别', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-preview-'))
+    try {
+      const txtPath = join(dir, 'notes.md')
+      writeFileSync(txtPath, '# 标题\n' + 'A'.repeat(200), 'utf8')
+      const preview = await readTextFilePreview(txtPath, 40)
+      expect(preview.truncated).toBe(true)
+      expect(preview.content.startsWith('# 标题')).toBe(true)
+
+      const subDir = join(dir, 'design-assets')
+      mkdirSync(subDir)
+      writeFileSync(join(subDir, 'spec.txt'), 'hi')
+      const dirDoc = await extractFileSnippet({
+        id: 'd1',
+        name: 'design-assets',
+        ext: 'dir',
+        path: subDir,
+        sourcePath: subDir,
+        isCopy: false,
+        isDir: true,
+        size: 0,
+        mtimeMs: 0,
+        addedAt: 0
+      })
+      expect(dirDoc.readStatus).toBe('full')
+      expect(dirDoc.snippet).toContain('[文件] spec.txt')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

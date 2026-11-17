@@ -2,6 +2,10 @@ import type { Settings, SettingsPatch } from '../shared/types'
 
 export const COPY_LIMIT_MIN_MB = 64
 export const COPY_LIMIT_MAX_MB = 20480
+export const FOCUS_MIN_MINUTES = 1
+export const FOCUS_MAX_MINUTES = 180
+export const REST_MIN_MINUTES = 1
+export const REST_MAX_MINUTES = 60
 
 /** 校验并应用通用设置更新：限制副本容量上限区间，未打包时不修改开机自启状态 */
 export function applySettingsPatch(
@@ -41,6 +45,22 @@ export function applySettingsPatch(
     next.copyLimitMB = Math.round(
       Math.min(Math.max(patch.copyLimitMB, COPY_LIMIT_MIN_MB), COPY_LIMIT_MAX_MB)
     )
+  }
+
+  if (typeof patch.focusMinutes === 'number' && Number.isFinite(patch.focusMinutes)) {
+    next.focusMinutes = Math.round(
+      Math.min(Math.max(patch.focusMinutes, FOCUS_MIN_MINUTES), FOCUS_MAX_MINUTES)
+    )
+  }
+
+  if (typeof patch.restMinutes === 'number' && Number.isFinite(patch.restMinutes)) {
+    next.restMinutes = Math.round(
+      Math.min(Math.max(patch.restMinutes, REST_MIN_MINUTES), REST_MAX_MINUTES)
+    )
+  }
+
+  if (typeof patch.focusNotify === 'boolean') {
+    next.focusNotify = patch.focusNotify
   }
 
   return { next, alwaysOnTopChanged, openAtLoginChanged }

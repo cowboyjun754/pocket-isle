@@ -11,7 +11,7 @@ import type {
   FileSummary
 } from '../shared/types'
 
-const TEXT_EXTS = new Set([
+export const TEXT_EXTS = new Set([
   'txt',
   'md',
   'markdown',
@@ -44,7 +44,7 @@ const TEXT_EXTS = new Set([
   'sh'
 ])
 
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'])
+export const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'])
 
 export interface ExtractedDoc {
   id: string
@@ -66,6 +66,25 @@ export function decodeTextBuffer(buf: Buffer): string {
   }
   const utf8 = buf.toString('utf8').replace(/\0/g, '').trim()
   return utf8.startsWith('\uFEFF') ? utf8.slice(1).trim() : utf8
+}
+
+/** 安全读取纯文本文件前置内容（最多 maxBytes 字节），供面板快速预览或复制到剪贴板 */
+export async function readTextFilePreview(
+  filePath: string,
+  maxBytes = 64 * 1024
+): Promise<{ content: string; truncated: boolean }> {
+  const st = await fs.stat(filePath)
+  const readSize = Math.min(st.size, maxBytes)
+  if (readSize === 0) return { content: '', truncated: false }
+  const fd = await fs.open(filePath, 'r')
+  try {
+    const buf = Buffer.alloc(readSize)
+    const { bytesRead } = await fd.read(buf, 0, readSize, 0)
+    const content = decodeTextBuffer(buf.subarray(0, bytesRead))
+    return { content, truncated: st.size > bytesRead }
+  } finally {
+    await fd.close()
+  }
 }
 
 function decodeXmlEntities(s: string): string {
@@ -185,18 +204,20 @@ export async function extractFileSnippet(
     readStatus: 'meta-only'
   }
   try {
+    if (item.isDir || item.ext === 'dir') {
+      const entries = await fs.readdir(item.path, { withFileTypes: true })
+      const visible = entries.filter((e) => !e.name.startsWith('.')).slice(0, 30)
+      const list = visible.map((e) => `${e.isDirectory() ? '[目录]' : '[文件]'} ${e.name}`).join('\n')
+      base.snippet = `文件夹内容（共 ${entries.length} 项）：\n${list}`.slice(0, maxChars)
+      base.readStatus = entries.length <= 30 && base.snippet.length < maxChars ? 'full' : 'partial'
+      return base
+    }
+
     if (TEXT_EXTS.has(item.ext)) {
-      const fd = await fs.open(item.path, 'r')
-      try {
-        const buf = Buffer.alloc(Math.min(item.size || 65536, 48 * 1024))
-        const { bytesRead } = await fd.read(buf, 0, buf.length, 0)
-        const text = decodeTextBuffer(buf.subarray(0, bytesRead))
-        if (text) {
-          base.snippet = text.slice(0, maxChars)
-          base.readStatus = item.size <= bytesRead && text.length <= maxChars ? 'full' : 'partial'
-        }
-      } finally {
-        await fd.close()
+      const { content, truncated } = await readTextFilePreview(item.path, 48 * 1024)
+      if (content) {
+        base.snippet = content.slice(0, maxChars)
+        base.readStatus = !truncated && content.length <= maxChars ? 'full' : 'partial'
       }
       return base
     }
@@ -875,13 +896,15 @@ export async function breakdownFocusGoal(
   cfg: AiConfig,
   goal: string,
   docs: ExtractedDoc[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  durationMinutes = 25
 ): Promise<AiBreakdownResult> {
-  const sys = `你是「停靠岛」里的 AI 水獭搭档。用户正准备开启一轮 25 分钟的专注计时。
-请根据用户输入的目标和关联的码头文件摘要，建议一个适合在 25 分钟内推进的具体小目标和 3 个简短可勾选的步骤。
+  const mins = Math.min(Math.max(Math.round(durationMinutes || 25), 1), 180)
+  const sys = `你是「停靠岛」里的 AI 水獭搭档。用户正准备开启一轮 ${mins} 分钟的专注计时。
+请根据用户输入的目标和关联的码头文件摘要，建议一个适合在 ${mins} 分钟内推进的具体小目标和 3 个简短可勾选的步骤。
 严格只输出 JSON：
 {
-  "refinedGoal": "适合25分钟完成的清晰小目标（24字以内）",
+  "refinedGoal": "适合${mins}分钟完成的清晰小目标（24字以内）",
   "steps": ["步骤1（22字内）", "步骤2（22字内）", "步骤3（22字内）"],
   "otterBubble": "15字以内的水獭加油短语"
 }`
@@ -918,16 +941,16 @@ export async function recommendDecoration(
   otterBubble: string
   reason: string
 }> {
-  const sys = `你是停靠岛上的小水獭。岛上有6件预设装饰：flowers(野花), bench(长椅), lamp(小路灯), tree(小树), cabin(小木屋), windmill(小风车)，以及氛围 ambience("day"或"night")。
+  const sys = `你是停靠岛上的小水獭。岛上有6件预设装饰：flowers(野花), bench(长椅), lamp(小路灯), tree(小树), cabin(小木屋), windmill(小风车)，以及氛围 ambience("day"晴天 / "night"微夜 / "rain"细雨)。
 请根据用户想要的心情或风格，推荐一套搭配。只输出 JSON：
 {
-  "ambience": "day 或 night",
+  "ambience": "day 或 night 或 rain",
   "enabled": ["flowers", "lamp", ...],
   "otterBubble": "15字以内的布置感言",
   "reason": "25字以内的搭配说明"
 }`
   const data = await callChatJson<{
-    ambience?: 'day' | 'night'
+    ambience?: 'day' | 'night' | 'rain'
     enabled?: DecorationId[]
     otterBubble?: string
     reason?: string
@@ -939,9 +962,11 @@ export async function recommendDecoration(
     DecorationId,
     boolean
   >
+  const ambience =
+    data.ambience === 'night' || data.ambience === 'rain' ? data.ambience : 'day'
   return {
     state: {
-      ambience: data.ambience === 'night' ? 'night' : 'day',
+      ambience,
       enabled
     },
     otterBubble: data.otterBubble || '帮你换好新布置啦~',

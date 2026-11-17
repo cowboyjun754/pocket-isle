@@ -50,18 +50,15 @@ export class Dock {
         result.errors.push(`无法读取：${basename(raw)}`)
         continue
       }
-      if (st.isDirectory()) {
-        result.errors.push(`暂不支持文件夹：${basename(raw)}`)
-        continue
-      }
-
-      const copy = shouldCopy(raw, this.tempRoots)
+      const isDir = st.isDirectory()
+      const copy = isDir ? false : shouldCopy(raw, this.tempRoots)
       await this.log(raw, copy)
 
       const dup = this.items.find(
         (i) =>
-          samePath(i.sourcePath, raw) &&
-          (!copy || (i.isCopy && i.size === st.size && i.mtimeMs === st.mtimeMs))
+          samePath(i.path, raw) ||
+          (samePath(i.sourcePath, raw) &&
+            (!copy || (i.isCopy && i.size === st.size && i.mtimeMs === st.mtimeMs)))
       )
       if (dup) {
         result.skipped++
@@ -91,11 +88,12 @@ export class Dock {
         d.items.push({
           id,
           name,
-          ext: extname(name).slice(1).toLowerCase(),
+          ext: isDir ? 'dir' : extname(name).slice(1).toLowerCase(),
           path: usePath,
           sourcePath: raw,
           isCopy: copy,
-          size: st.size,
+          ...(isDir ? { isDir: true } : {}),
+          size: isDir ? 0 : st.size,
           mtimeMs: st.mtimeMs,
           addedAt: Date.now()
         })

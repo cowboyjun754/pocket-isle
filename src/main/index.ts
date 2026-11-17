@@ -6,13 +6,13 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   powerMonitor,
   screen,
   shell,
   Tray,
   type WebContents
 } from 'electron'
-import { writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -42,10 +42,13 @@ import type {
 import {
   breakdownFocusGoal,
   extractFileSnippet,
+  IMAGE_EXTS,
   isAbortError,
   organizeAndSummarize,
+  readTextFilePreview,
   recommendDecoration,
   summarizeDocumentsTogether,
+  TEXT_EXTS,
   testConnection
 } from './aiService'
 import { buildClipboardFilename } from './clipboardRules'
@@ -55,7 +58,8 @@ import { makeDragIcon, makeTrayIcon } from './icons'
 import { applySettingsPatch } from './settingsRules'
 import { Store } from './store'
 
-if (!app.requestSingleInstanceLock()) {
+const exitEarly = process.argv.includes('--quit')
+if (!app.requestSingleInstanceLock() || exitEarly) {
   app.quit()
 }
 
@@ -269,7 +273,7 @@ function createIsland(): void {
   loadView(island, 'island')
 }
 
-function syncIslandMouseIgnore(forceApply = false): boolean {
+function syncIslandMouseIgnore(forceApply = false, forward = true): boolean {
   if (!island || island.isDestroyed()) return false
   const p = screen.getCursorScreenPoint()
   const b = island.getBounds()
@@ -283,7 +287,11 @@ function syncIslandMouseIgnore(forceApply = false): boolean {
 
   if (forceApply || inside === ignoringMouse) {
     ignoringMouse = !inside
-    island.setIgnoreMouseEvents(ignoringMouse, { forward: true })
+    if (forward) {
+      island.setIgnoreMouseEvents(ignoringMouse, { forward: true })
+    } else {
+      island.setIgnoreMouseEvents(ignoringMouse)
+    }
   }
   return inside
 }
@@ -667,6 +675,50 @@ function registerIpc(): void {
     return url
   })
 
+  ipcMain.handle('dock:readTextPreview', async (_e, id: unknown) => {
+    const it = typeof id === 'string' ? dock.find(id) : undefined
+    if (!it) return { ok: false, message: '条目不存在' }
+    if (it.isDir || it.ext === 'dir' || !TEXT_EXTS.has(it.ext)) {
+      return { ok: false, message: '当前仅支持纯文本与代码文件预览' }
+    }
+    try {
+      const { content, truncated } = await readTextFilePreview(it.path, 64 * 1024)
+      return { ok: true, content, truncated }
+    } catch {
+      return { ok: false, message: '无法读取文件内容，原文件可能已移动' }
+    }
+  })
+
+  ipcMain.handle('dock:copyToClipboard', async (_e, id: unknown) => {
+    const it = typeof id === 'string' ? dock.find(id) : undefined
+    if (!it) return { ok: false, message: '条目不存在' }
+    if (!it.isDir && IMAGE_EXTS.has(it.ext)) {
+      try {
+        const img = nativeImage.createFromPath(it.path)
+        if (!img.isEmpty()) {
+          clipboard.writeImage(img)
+          return { ok: true, message: `已复制图片到剪贴板：${it.name}` }
+        }
+      } catch {
+        /* 图片读取失败时回退复制路径 */
+      }
+    }
+    if (!it.isDir && TEXT_EXTS.has(it.ext)) {
+      try {
+        const { content, truncated } = await readTextFilePreview(it.path, 256 * 1024)
+        clipboard.writeText(content)
+        return {
+          ok: true,
+          message: truncated ? `已复制前 256 KB 文本：${it.name}` : `已复制文本内容：${it.name}`
+        }
+      } catch {
+        /* 文本读取失败时回退复制路径 */
+      }
+    }
+    clipboard.writeText(it.path)
+    return { ok: true, message: `已复制路径：${it.name}` }
+  })
+
   ipcMain.handle('dock:copyUsage', () => ({ used: dock.copyUsage(), limit: dock.copyLimit() }))
 
   // ---------- 自由桌搭与小岛记忆 ----------
@@ -674,7 +726,7 @@ function registerIpc(): void {
   ipcMain.handle('decor:set', (_e, next: Partial<DecorationState>) => {
     let ambienceChanged = false
     store.update((d) => {
-      if (next.ambience === 'day' || next.ambience === 'night') {
+      if (next.ambience === 'day' || next.ambience === 'night' || next.ambience === 'rain') {
         ambienceChanged = d.decorations.ambience !== next.ambience
         d.decorations.ambience = next.ambience
         if (ambienceChanged) {
@@ -746,6 +798,9 @@ function registerIpc(): void {
     }
     if (res.openAtLoginChanged) {
       app.setLoginItemSettings({ openAtLogin: res.next.openAtLogin })
+    }
+    if (typeof rawPatch?.focusMinutes === 'number') {
+      focusCtrl.syncIdleDuration()
     }
     rebuildTrayMenu()
     broadcast('settings:changed', store.data.settings)
@@ -893,7 +948,12 @@ function registerIpc(): void {
 
   ipcMain.handle(
     'ai:breakdown',
-    async (_e, goal: string, docIds: string[]): Promise<AiBreakdownResult> => {
+    async (
+      _e,
+      goal: string,
+      docIds: string[],
+      durationMinutes?: number
+    ): Promise<AiBreakdownResult> => {
       const ctrl = beginAiSignal()
       try {
         const idSet = new Set(Array.isArray(docIds) ? docIds : [])
@@ -904,7 +964,10 @@ function registerIpc(): void {
           store.data.settings.ai,
           String(goal || ''),
           extracted,
-          ctrl.signal
+          ctrl.signal,
+          typeof durationMinutes === 'number'
+            ? durationMinutes
+            : store.data.settings.focusMinutes
         )
         emitOtterReaction({
           action: 'wave',
@@ -964,6 +1027,11 @@ function registerIpc(): void {
     }
   })
 
+  ipcMain.on('dock:syncDragPassThrough', () => {
+    if (!dragOutActive || !island || island.isDestroyed()) return
+    syncIslandMouseIgnore(false, false)
+  })
+
   ipcMain.on('dock:startDrag', (e, ids: unknown, rawKind?: unknown) => {
     const files = dock.pathsFor(strArr(ids))
     if (!files.length) {
@@ -974,76 +1042,35 @@ function registerIpc(): void {
       rawKind === 'box' || rawKind === 'scroll' || rawKind === 'envelope' ? rawKind : 'envelope'
     const fromIsland = !!(island && !island.isDestroyed() && e.sender === island.webContents)
     const icon = makeDragIcon(kind)
-    const t0 = Date.now()
     const hadFocus = fromIsland && island ? island.isFocused() : (panel?.isFocused() ?? false)
     dragOutActive = true
     cancelCollapse()
     let dragPollTimer: NodeJS.Timeout | null = null
-    let sawOutside = false
-    let pollTicks = 0
-    let returnedInside = false
     if (fromIsland && island && !island.isDestroyed()) {
       if (!hadFocus) island.focus()
       if (store.data.settings.alwaysOnTop) {
         island.setAlwaysOnTop(true, 'floating')
       }
-      // 拖出前关闭 forward 鼠标钩子并开启纯 WS_EX_TRANSPARENT 穿透，防止透明区或钩子拦住外部投放目标；
-      // 拖到外部后若重新拖回岛/栈桥上方，则临时取消穿透以便在岛上安全取消放回而不误掉到背后桌面
-      ignoringMouse = true
-      island.setIgnoreMouseEvents(true)
+      // 拖出前关闭 forward 鼠标钩子，并按光标位置同步纯 WS_EX_TRANSPARENT 穿透状态：
+      // 光标仍在岛/栈桥内时不穿透以便原地取消放回；移出岛/栈桥（含透明悬空区）后立即穿透，拖回岛上再恢复接住放回
+      syncIslandMouseIgnore(true, false)
       dragPollTimer = setInterval(() => {
-        pollTicks++
         if (!dragOutActive || !island || island.isDestroyed()) return
-        const p = screen.getCursorScreenPoint()
-        const b = island.getBounds()
-        const side = currentSide()
-        const mode: ExpandMode = side === 'free' ? 'full' : expandMode
-        const inside = isInsideIsland(p.x - b.x, p.y - b.y, side, mode, dock.items.length > 0)
-        if (!sawOutside) {
-          if (!inside) sawOutside = true
-          return
-        }
-        if (inside === ignoringMouse) {
-          ignoringMouse = !inside
-          if (inside) returnedInside = true
-          island.setIgnoreMouseEvents(ignoringMouse)
-        }
-      }, 16)
+        syncIslandMouseIgnore(false, false)
+      }, 10)
     }
     try {
       e.sender.startDrag({ file: files[0], files, icon })
     } finally {
       if (dragPollTimer) clearInterval(dragPollTimer)
-      const elapsedMs = Date.now() - t0
       dragOutActive = false
       dragGraceUntil = Date.now() + 600
-      let insideNow = false
       if (fromIsland && island && !island.isDestroyed()) {
         if (store.data.settings.alwaysOnTop) {
           island.setAlwaysOnTop(true, 'screen-saver')
         }
-        insideNow = syncIslandMouseIgnore(true)
-        hovering = insideNow
+        hovering = syncIslandMouseIgnore(true)
         pushPose()
-      }
-      try {
-        writeFileSync(
-          join(app.getPath('userData'), 'drag-diag.log'),
-          JSON.stringify({
-            at: new Date().toISOString(),
-            from: fromIsland ? 'island' : 'panel',
-            hadFocus,
-            elapsedMs,
-            pollTicks,
-            sawOutside,
-            returnedInside,
-            insideNow,
-            fileCount: files.length,
-            iconEmpty: icon.isEmpty()
-          }) + '\n'
-        )
-      } catch {
-        /* ignore */
       }
       if (!e.sender.isDestroyed()) e.sender.send('dock:dragEnded')
       setTimeout(() => {
@@ -1131,9 +1158,17 @@ function registerIpc(): void {
 
 // ---------- 生命周期 ----------
 
-app.on('second-instance', () => showIsland())
+app.on('second-instance', (_event, commandLine) => {
+  if (commandLine.includes('--quit')) {
+    quitting = true
+    app.quit()
+    return
+  }
+  showIsland()
+})
 
 app.whenReady().then(() => {
+  if (exitEarly || !app.hasSingleInstanceLock()) return
   app.setAppUserModelId('local.pocket-isle')
   const userData = app.getPath('userData')
   store = new Store(userData)
@@ -1146,7 +1181,20 @@ app.whenReady().then(() => {
   focusCtrl = new FocusController(
     store,
     (f) => broadcast('focus:changed', f),
-    (r) => emitOtterReaction(r, true)
+    (r) => emitOtterReaction(r, true),
+    (finishedPhase) => {
+      broadcast('focus:finished', finishedPhase)
+      if (store.data.settings.focusNotify !== false && Notification.isSupported()) {
+        new Notification({
+          title: finishedPhase === 'focus' ? '停靠岛 · 专注完成' : '停靠岛 · 休息完毕',
+          body:
+            finishedPhase === 'focus'
+              ? '本轮专注时间到啦，喝口水歇一会儿吧~'
+              : '精力恢复得不错，随时开启下一轮专注！',
+          silent: true
+        }).show()
+      }
+    }
   )
 
   registerIpc()

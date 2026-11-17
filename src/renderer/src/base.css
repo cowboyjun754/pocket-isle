@@ -67,3 +67,22 @@ input:focus {
   border-color: var(--sage-d) !important;
   box-shadow: 0 0 0 2px rgba(168, 196, 154, 0.35);
 }
+
+/* 暖纸手绘风细滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(158, 122, 80, 0.32);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(158, 122, 80, 0.52);
+}
