@@ -1,0 +1,1234 @@
+.island-viewport {
+  --flip-x: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.island-viewport.side-left {
+  --flip-x: -1;
+}
+
+.island-viewport:active {
+  cursor: grabbing;
+}
+
+.island-viewport.is-grabbing-parcel,
+.island-viewport.is-grabbing-parcel * {
+  cursor: none !important;
+}
+
+/* 三段式灵动弹簧过渡：停靠 <-> 迎宾半伸出 <-> 全展开 */
+.island-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: center center;
+  transition: transform 460ms cubic-bezier(0.22, 1.28, 0.36, 1), filter 420ms ease;
+  will-change: transform;
+}
+
+/* 拖拽窗口瞬间关闭过渡动画，配合主进程坐标补偿，保证鼠标抓住的位置纹丝不动 */
+.island-viewport.is-dragging-win .island-stage,
+.island-viewport.is-dragging-win .otter-root {
+  transition: none !important;
+}
+
+/* 左边缘停靠时主舞台 scaleX(-1)，文字与角标反向抵消镜像保持正向 */
+.island-viewport.side-left .counter-flip {
+  transform: translate(-50%, -50%) scaleX(-1);
+}
+
+.layer-shadow {
+  position: absolute;
+  left: 68px;
+  top: 52px;
+  width: 244px;
+  height: 168px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(40, 32, 22, 0.26) 0%, rgba(40, 32, 22, 0) 72%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.layer-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+  transition: filter 420ms ease;
+}
+
+.island-horiz-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 320px;
+  height: 240px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 10;
+  transition: filter 420ms ease;
+}
+
+.island-viewport.is-dragover .island-horiz-img {
+  filter: brightness(1.04) drop-shadow(0 0 6px rgba(255, 214, 112, 0.7));
+}
+
+.layer-fx-svg,
+.layer-foreground-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.layer-foreground-svg {
+  z-index: 25;
+}
+
+.layer-fx-svg {
+  z-index: 30;
+}
+
+.grass-sprout {
+  animation: sprout-pop 340ms cubic-bezier(0.28, 1.5, 0.5, 1) both;
+}
+
+.tea-steam {
+  animation: steam-rise 2.2s ease-in-out infinite;
+}
+
+.shore-starfish.is-hopping {
+  animation: otter-hop 460ms ease-out;
+}
+
+.fx-particle {
+  animation: particle-float 2.2s ease-out forwards;
+}
+
+.fx-particle.fx-leaf {
+  animation: leaf-fall 2.3s ease-in-out forwards;
+}
+
+.fx-particle.fx-splash {
+  animation: splash-drop 760ms cubic-bezier(0.2, 0.85, 0.4, 1) forwards;
+}
+
+/* 外圈奶油白泡沫描边 + 海水 */
+.water-foam {
+  fill: #fdf6e3;
+  stroke: #7a654e;
+  stroke-width: 2.2;
+}
+
+.water-ring {
+  fill: #a9cde0;
+  animation: water-drift 6s ease-in-out infinite alternate;
+  transform-origin: center;
+}
+
+.sand-base {
+  fill: #f3dfc1;
+  stroke: #7a654e;
+  stroke-width: 1.8;
+}
+
+.grass-base {
+  fill: #b7cf9f;
+  stroke: #6b5842;
+  stroke-width: 2;
+}
+
+.stepping-stones ellipse {
+  fill: #d8ccb4;
+  stroke: #8a7962;
+  stroke-width: 1.2;
+  opacity: 0.78;
+}
+
+.dock-glow {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.dock-glow.active {
+  opacity: 1;
+  animation: glow-pulse 1.2s ease-in-out infinite;
+}
+
+/* 昨天深受好评的水平左伸木栈桥细节 */
+.dock-ripple {
+  fill: none;
+  stroke: #fdf6e3;
+  stroke-width: 1.6;
+  opacity: 0.85;
+}
+
+.dock-pillar {
+  fill: #9c7952;
+  stroke: #523b24;
+  stroke-width: 1.5;
+}
+
+.dock-beam {
+  fill: #b38c60;
+  stroke: #523b24;
+  stroke-width: 1.5;
+}
+
+.dock-plank {
+  fill: #e3c699;
+  stroke: #5c4328;
+  stroke-width: 1.5;
+  transition: filter 160ms ease;
+}
+
+.island-viewport.is-dragover .dock-plank {
+  filter: brightness(1.09) drop-shadow(0 0 6px rgba(255, 211, 107, 0.9));
+}
+
+.dock-bollard {
+  fill: #8c6640;
+  stroke: #4a331d;
+  stroke-width: 1.6;
+}
+
+.dock-bollard-cap {
+  fill: #b88f62;
+  stroke: #4a331d;
+  stroke-width: 1.4;
+}
+
+.dock-rope {
+  fill: none;
+  stroke: #d9bd8c;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+/* 6 件手绘装饰叠层（对齐在右侧岛体草地上 x: 52..312） */
+.layer-decorations {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.deco-layer {
+  position: absolute;
+  left: 49px;
+  top: 9px;
+  width: 269px;
+  height: 216px;
+  pointer-events: none;
+  user-select: none;
+  transition: filter 420ms ease, opacity 260ms ease;
+}
+
+.deco-flowers {
+  transform-origin: 71px 69px;
+  animation: gentle-sway 4.5s ease-in-out infinite;
+}
+
+.deco-tree {
+  transform-origin: 149px 55px;
+  animation: gentle-sway 5.5s ease-in-out infinite;
+}
+
+.deco-windmill {
+  transform-origin: 209px 62px;
+  animation: windmill-breeze 6.2s ease-in-out infinite;
+}
+
+.water-glint {
+  fill: rgba(255, 252, 240, 0.58);
+  opacity: 0;
+  animation: water-glint-twinkle 5.6s ease-in-out infinite;
+}
+
+.water-glint.glint-2 {
+  animation-delay: 1.9s;
+  animation-duration: 6.4s;
+}
+
+.water-glint.glint-3 {
+  animation-delay: 3.5s;
+  animation-duration: 5.2s;
+}
+
+.water-shimmers.is-night .water-glint {
+  fill: rgba(255, 246, 198, 0.85);
+}
+
+.smoke-puff {
+  fill: rgba(249, 243, 232, 0.72);
+  opacity: 0;
+  animation: cabin-smoke-puff 5.4s ease-out infinite;
+}
+
+.smoke-puff.puff-2 {
+  animation-delay: 2.6s;
+}
+
+.firefly {
+  fill: #ffe885;
+  filter: drop-shadow(0 0 4px rgba(255, 232, 120, 0.95));
+  opacity: 0;
+  animation: firefly-float 4.2s ease-in-out infinite;
+}
+
+.firefly.ff-2 {
+  animation-delay: 1.1s;
+  animation-duration: 4.9s;
+}
+
+.firefly.ff-3 {
+  animation-delay: 2.3s;
+  animation-duration: 4.5s;
+}
+
+.firefly.ff-4 {
+  animation-delay: 3.2s;
+  animation-duration: 5.3s;
+}
+
+/* 夜晚暖光氛围滤镜与灯光叠层 */
+.island-viewport.ambience-night .island-horiz-img {
+  filter: brightness(0.76) saturate(0.88) hue-rotate(10deg);
+}
+
+.island-viewport.ambience-night .deco-layer {
+  filter: brightness(0.84) saturate(0.92);
+}
+
+.island-viewport.ambience-night .deco-lamp,
+.island-viewport.ambience-night .deco-cabin {
+  filter: brightness(1.08) drop-shadow(0 0 8px rgba(255, 214, 112, 0.78));
+}
+
+.night-glow {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 220, 120, 0.68) 0%, rgba(255, 210, 100, 0) 70%);
+  pointer-events: none;
+  animation: glow-pulse 2.4s ease-in-out infinite;
+}
+
+.night-glow-lamp {
+  left: 147px;
+  top: 2px;
+  width: 52px;
+  height: 52px;
+}
+
+.night-glow-cabin {
+  left: 194px;
+  top: 31px;
+  width: 60px;
+  height: 50px;
+}
+
+.water-ripple-ring {
+  fill: none;
+  stroke: #fffdf6;
+  stroke-width: 1.8;
+  opacity: 0;
+}
+
+.water-ripple-ring.ring-1 {
+  animation: ripple-expand 1.1s cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+}
+
+.water-ripple-ring.ring-2 {
+  animation: ripple-expand 1.1s 180ms cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+}
+
+/* ---------- 减压小纸船 ---------- */
+
+.paper-boat {
+  position: absolute;
+  transform: translate(-50%, -65%);
+  z-index: 320;
+  cursor: grab;
+  filter: drop-shadow(0 2px 3px rgba(45, 65, 85, 0.22));
+  animation: boat-bob 3s ease-in-out infinite;
+  transition: left 220ms ease-out, top 220ms ease-out;
+}
+
+.paper-boat.is-dragging {
+  cursor: grabbing;
+  transition: none;
+  transform: translate(-50%, -75%) scale(1.1);
+}
+
+.paper-boat.is-sailing {
+  pointer-events: none;
+  animation: boat-sail-away 4.5s ease-in-out forwards;
+}
+
+/* ---------- 手绘水獭角色 ---------- */
+
+.otter-root {
+  position: absolute;
+  width: 64px;
+  height: 68px;
+  margin-left: -32px;
+  margin-top: -62px;
+  transform-origin: 50% 92%;
+  transition: left 420ms cubic-bezier(0.22, 1.28, 0.36, 1), top 420ms cubic-bezier(0.22, 1.28, 0.36, 1),
+    transform 320ms ease;
+  pointer-events: none;
+  z-index: 240;
+}
+
+.otter-root.otter-in-docked {
+  transform: scale(0.68);
+}
+
+.otter-breath {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 95%;
+  animation: breath 3.2s ease-in-out infinite;
+}
+
+.otter-sprite {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgba(52, 36, 20, 0.22));
+}
+
+.otter-root.react-hop {
+  animation: otter-hop 460ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+.otter-root.react-wave {
+  animation: otter-wiggle 560ms ease-in-out;
+}
+
+.otter-root.react-nod {
+  animation: otter-nod 480ms ease-in-out;
+}
+
+.otter-bubble {
+  position: absolute;
+  left: 48%;
+  top: -8px;
+  transform: translate(-50%, -50%);
+  padding: 3px 9px;
+  border-radius: 11px;
+  background: rgba(253, 246, 227, 0.97);
+  border: 1.5px solid var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+  animation: badge-pop 240ms ease-out;
+}
+
+.island-viewport.mode-docked .otter-bubble {
+  left: 4px;
+  top: -12px;
+  max-width: 196px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translate(-100%, -50%) scaleX(var(--flip-x, 1)) scale(1.36);
+  animation: bubble-pop-docked 240ms ease-out;
+}
+
+.island-viewport.mode-peek .otter-bubble {
+  left: 40%;
+  top: -10px;
+  max-width: 196px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translate(-100%, -50%) scaleX(var(--flip-x, 1));
+  animation: bubble-pop-peek 240ms ease-out;
+}
+
+/* ---------- 包裹与角标 ---------- */
+
+.layer-parcels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 750;
+}
+
+.parcel {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  animation: parcel-drop 360ms cubic-bezier(0.3, 1.6, 0.5, 1) backwards;
+  pointer-events: auto;
+  cursor: grab;
+  transition: left 200ms cubic-bezier(0.22, 1.28, 0.36, 1),
+    top 200ms cubic-bezier(0.22, 1.28, 0.36, 1);
+}
+
+.parcel-sprite-img {
+  display: block;
+  transform-origin: center center;
+  filter: drop-shadow(0 2px 2px rgba(50, 35, 20, 0.26));
+  transition: transform 160ms cubic-bezier(0.22, 1.28, 0.36, 1), filter 160ms ease;
+}
+
+.parcel:hover .parcel-sprite-img {
+  transform: translateY(-3px) scale(1.05);
+}
+
+.parcel-nameplate {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translate(-50%, 0);
+  min-width: 102px;
+  max-width: 142px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  background: rgba(253, 246, 227, 0.97);
+  border: 1.5px solid var(--wood-d);
+  box-shadow: 0 3px 8px rgba(45, 32, 18, 0.22);
+  pointer-events: auto;
+  z-index: 30;
+  animation: nameplate-in 150ms ease-out both;
+}
+
+.parcel-nameplate::after {
+  content: '';
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  top: 100%;
+  height: 14px;
+}
+
+.island-viewport.side-left .parcel-nameplate.counter-flip {
+  transform: translate(-50%, 0) scaleX(-1);
+}
+
+.parcel-nameplate-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parcel-nameplate-brief {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.parcel-throw-btn {
+  margin-top: 4px;
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(223, 241, 250, 0.9);
+  border: 1px solid #7aa6c2;
+  color: #2b526d;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.parcel-throw-btn:hover {
+  background: #cfe9f7;
+  border-color: #5588aa;
+}
+
+.parcel-nameplate-hint {
+  margin-top: 3px;
+  font-size: 9.5px;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.dock-more-pill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: rgba(253, 246, 227, 0.96);
+  border: 1.5px solid var(--wood-d);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  box-shadow: 0 2px 4px rgba(45, 32, 18, 0.2);
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 755;
+  animation: badge-pop 240ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.dock-more-pill:hover {
+  background: var(--cream-2);
+}
+
+.parcel.is-grabbed-in-stage {
+  z-index: 20;
+  transition: none;
+}
+
+.parcel.is-grabbed-in-stage .parcel-sprite-img,
+.parcel.is-hand-throwing .parcel-sprite-img {
+  transform: translateY(-10px) rotate(-5deg) scale(1.06);
+  filter: drop-shadow(0 5px 6px rgba(42, 58, 75, 0.34));
+}
+
+.parcel.is-hand-throwing {
+  z-index: 25;
+  pointer-events: none;
+  transition: left 360ms cubic-bezier(0.22, 1.15, 0.36, 1),
+    top 360ms cubic-bezier(0.28, 0.9, 0.38, 1);
+}
+
+.parcel.is-dragging-out {
+  opacity: 0.38;
+}
+
+.parcel.is-sinking {
+  animation: none;
+  transition: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.parcel.is-unavailable .parcel-sprite-img {
+  opacity: 0.72;
+  filter: grayscale(0.35) drop-shadow(0 2px 2px rgba(50, 35, 20, 0.22));
+}
+
+.grab-hand-svg {
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(45, 35, 20, 0.25));
+  animation: hand-grab-in 130ms cubic-bezier(0.22, 1.28, 0.36, 1) both;
+}
+
+.sea-drop-tip {
+  position: absolute;
+  top: -38px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: rgba(253, 246, 227, 0.96);
+  border: 1.5px solid var(--sea-d);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(38, 60, 80, 0.22);
+}
+
+.releasing-hand {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 775;
+  animation: hand-release 280ms ease-out forwards;
+}
+
+.release-hand-svg {
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(45, 35, 20, 0.22));
+}
+
+.sinking-parcel {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  z-index: 760;
+}
+
+.sink-waterline-ring {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 38px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1.8px solid rgba(255, 253, 246, 0.92);
+  opacity: 0;
+  animation: sink-waterline 0.98s 180ms ease-out both;
+}
+
+.sink-parcel-img {
+  position: relative;
+  display: block;
+  transform-origin: center center;
+  filter: drop-shadow(0 2px 3px rgba(40, 68, 92, 0.28));
+  animation: parcel-sink 1.18s cubic-bezier(0.25, 0.65, 0.35, 1) forwards;
+}
+
+.dock-badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: #e07a5f;
+  color: #fffaf0;
+  border: 2px solid var(--cream);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
+  z-index: 410;
+  animation: badge-pop 240ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+/* ---------- 专注倒计时小胶囊 ---------- */
+
+.focus-mini-pill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(253, 246, 227, 0.96);
+  border: 1.5px solid var(--sage-d);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  z-index: 880;
+  transition: left 360ms ease, top 360ms ease, padding 220ms ease;
+}
+
+.focus-mini-pill.pill-mode-docked {
+  padding: 1px 5px;
+  gap: 3px;
+  font-size: 10px;
+}
+
+.pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage-d);
+  animation: glow-pulse 1.5s ease-in-out infinite;
+}
+
+/* ---------- 轻提示 ---------- */
+
+.island-toast {
+  position: absolute;
+  max-width: 280px;
+  padding: 5px 12px;
+  border-radius: 12px;
+  background: rgba(253, 246, 227, 0.97);
+  border: 1.5px solid var(--wood-d);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 3px 8px rgba(45, 32, 18, 0.2);
+  pointer-events: none;
+  z-index: 900;
+  animation: toast-in 220ms cubic-bezier(0.22, 1.28, 0.36, 1);
+}
+
+.island-toast.toast-full {
+  left: 54%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  animation: toast-in-full 220ms cubic-bezier(0.22, 1.28, 0.36, 1);
+}
+
+.island-toast.toast-peek,
+.island-toast.toast-docked {
+  bottom: 30px;
+}
+
+.island-toast.toast-side-right.toast-peek,
+.island-toast.toast-side-right.toast-docked {
+  right: 10px;
+}
+
+.island-toast.toast-side-left.toast-peek,
+.island-toast.toast-side-left.toast-docked {
+  left: 10px;
+}
+
+/* ---------- 悬停控件 ---------- */
+
+.hover-controls {
+  position: absolute;
+  top: 26px;
+  left: 282px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  z-index: 820;
+  pointer-events: none;
+}
+
+.hover-controls.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drag-handle {
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: rgba(253, 246, 227, 0.94);
+  border: 1.5px solid var(--wood-d);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hide-btn,
+.ambience-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 10px;
+  background: rgba(253, 246, 227, 0.94);
+  border: 1.5px solid var(--wood-d);
+  line-height: 18px;
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.hide-btn:hover,
+.ambience-btn:hover {
+  background: var(--cream-2);
+}
+
+/* ---------- 顶层点击区域 ---------- */
+
+.layer-hits {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 700;
+  pointer-events: none;
+}
+
+.hit-otter,
+.hit-dock,
+.hit-spot {
+  fill: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ---------- 关键帧 ---------- */
+
+@keyframes breath {
+  50% {
+    transform: scaleY(1.03);
+  }
+}
+
+@keyframes water-drift {
+  from {
+    transform: translateX(-1.5px);
+  }
+  to {
+    transform: translateX(1.5px);
+  }
+}
+
+@keyframes gentle-sway {
+  0%,
+  100% {
+    transform: rotate(-1.2deg);
+  }
+  50% {
+    transform: rotate(1.2deg);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.68;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ripple-expand {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(6.5);
+    opacity: 0;
+  }
+}
+
+@keyframes boat-bob {
+  0%,
+  100% {
+    transform: translate(-50%, -65%) rotate(-2deg);
+  }
+  50% {
+    transform: translate(-50%, -72%) rotate(2.5deg);
+  }
+}
+
+@keyframes boat-sail-away {
+  0% {
+    transform: translate(-50%, -65%) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: translate(calc(-50% + 18px), calc(-65% - 12px)) rotate(-4deg) scale(0.96);
+    opacity: 0.98;
+  }
+  75% {
+    transform: translate(calc(-50% + 56px), calc(-65% - 28px)) rotate(3deg) scale(0.84);
+    opacity: 0.72;
+  }
+  100% {
+    transform: translate(calc(-50% + 78px), calc(-65% - 38px)) rotate(-2deg) scale(0.72);
+    opacity: 0;
+  }
+}
+
+@keyframes bubble-pop-docked {
+  from {
+    transform: translate(-100%, -50%) scaleX(var(--flip-x, 1)) scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-100%, -50%) scaleX(var(--flip-x, 1)) scale(1.36);
+    opacity: 1;
+  }
+}
+
+@keyframes bubble-pop-peek {
+  from {
+    transform: translate(-100%, -50%) scaleX(var(--flip-x, 1)) scale(0.84);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-100%, -50%) scaleX(var(--flip-x, 1)) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes nameplate-in {
+  from {
+    opacity: 0;
+    margin-bottom: -4px;
+  }
+  to {
+    opacity: 1;
+    margin-bottom: 0;
+  }
+}
+
+@keyframes parcel-drop {
+  from {
+    transform: translate(-50%, -140%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, -100%);
+    opacity: 1;
+  }
+}
+
+@keyframes badge-pop {
+  from {
+    transform: translate(-50%, -50%) scaleX(var(--flip-x, 1)) scale(0.6);
+  }
+  to {
+    transform: translate(-50%, -50%) scaleX(var(--flip-x, 1)) scale(1);
+  }
+}
+
+@keyframes otter-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes otter-wiggle {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-6deg) translateY(-3px);
+  }
+  75% {
+    transform: rotate(6deg) translateY(-3px);
+  }
+}
+
+@keyframes otter-nod {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  35% {
+    transform: scaleY(0.92) translateY(3px);
+  }
+  70% {
+    transform: scaleY(1.04) translateY(-2px);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes toast-in-full {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes sprout-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes steam-rise {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translateY(-2.5px);
+  }
+}
+
+@keyframes particle-float {
+  0% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(16px, -24px) scale(1.15);
+  }
+}
+
+@keyframes leaf-fall {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-10px, 14px) rotate(25deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, 28px) rotate(-20deg);
+  }
+}
+
+@keyframes splash-drop {
+  0% {
+    opacity: 0.95;
+    transform: translate(0, 0) scale(0.8);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(6px, -16px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(12px, 4px) scale(0.6);
+  }
+}
+
+@keyframes hand-grab-in {
+  from {
+    opacity: 0.35;
+    transform: translate(-50%, -68%) scale(1.16);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes hand-release {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 14px)) scale(1.08);
+  }
+}
+
+@keyframes parcel-sink {
+  0% {
+    transform: translate(0, -10px) scale(1.06) rotate(-5deg);
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+  18% {
+    transform: translate(0, 2px) scale(1.02, 0.9) rotate(4deg);
+    clip-path: inset(0 0 8% 0);
+    opacity: 1;
+  }
+  42% {
+    transform: translate(0, 6px) scale(0.92) rotate(-5deg);
+    clip-path: inset(0 0 24% 0);
+    opacity: 0.92;
+  }
+  72% {
+    transform: translate(0, 12px) scale(0.72) rotate(7deg);
+    clip-path: inset(0 0 54% 0);
+    opacity: 0.62;
+  }
+  100% {
+    transform: translate(0, 22px) scale(0.42) rotate(10deg);
+    clip-path: inset(0 0 85% 0);
+    opacity: 0;
+  }
+}
+
+@keyframes sink-waterline {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0.95;
+  }
+  65% {
+    transform: translate(-50%, -50%) scale(1.3);
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.7);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-ring,
+  .deco-flowers,
+  .deco-tree,
+  .deco-windmill,
+  .water-glint,
+  .smoke-puff,
+  .firefly,
+  .paper-boat {
+    animation: none;
+  }
+}
+
+@keyframes windmill-breeze {
+  0%,
+  100% {
+    transform: rotate(-0.55deg);
+  }
+  50% {
+    transform: rotate(0.65deg);
+  }
+}
+
+@keyframes water-glint-twinkle {
+  0%,
+  100% {
+    opacity: 0.08;
+    transform: scaleX(0.85);
+  }
+  45% {
+    opacity: 0.65;
+    transform: scaleX(1.12);
+  }
+  70% {
+    opacity: 0.2;
+    transform: scaleX(0.95);
+  }
+}
+
+@keyframes cabin-smoke-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.75);
+  }
+  20% {
+    opacity: 0.65;
+  }
+  85% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(8px, -17px) scale(1.45);
+  }
+}
+
+@keyframes firefly-float {
+  0%,
+  100% {
+    opacity: 0.05;
+    transform: translate(0, 0) scale(0.8);
+  }
+  35% {
+    opacity: 0.92;
+    transform: translate(5px, -6px) scale(1.15);
+  }
+  70% {
+    opacity: 0.28;
+    transform: translate(-3px, -10px) scale(0.92);
+  }
+}

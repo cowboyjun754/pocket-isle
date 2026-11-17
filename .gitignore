@@ -1,0 +1,8 @@
+node_modules/
+out/
+dist/
+*.log
+*.broken-*
+.env*
+art/
+停靠岛-*.md
