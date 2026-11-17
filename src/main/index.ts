@@ -12,6 +12,7 @@ import {
   Tray,
   type WebContents
 } from 'electron'
+import { writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -66,6 +67,7 @@ let dock: Dock
 let focusCtrl: FocusController
 let quitting = false
 let dragOutActive = false
+let dragGraceUntil = 0
 let movingIsland = false
 let justSnapped = false
 let dragOrigin: {
@@ -165,7 +167,9 @@ function scheduleCollapse(delayMs = 1500): void {
   if (currentSide() === 'free') return
   const actualDelay = Math.max(delayMs, holdExpandUntil - Date.now())
   collapseTimer = setTimeout(() => {
-    if (hovering || movingIsland || dragOutActive || panel?.isVisible()) return
+    if (hovering || movingIsland || dragOutActive || Date.now() < dragGraceUntil || panel?.isVisible()) {
+      return
+    }
     if (Date.now() < holdExpandUntil) {
       scheduleCollapse(holdExpandUntil - Date.now())
       return
@@ -265,25 +269,32 @@ function createIsland(): void {
   loadView(island, 'island')
 }
 
+function syncIslandMouseIgnore(forceApply = false): boolean {
+  if (!island || island.isDestroyed()) return false
+  const p = screen.getCursorScreenPoint()
+  const b = island.getBounds()
+  const side = currentSide()
+  const mode: ExpandMode = side === 'free' ? 'full' : expandMode
+  const inside = isInsideIsland(p.x - b.x, p.y - b.y, side, mode, dock.items.length > 0)
+
+  if (!inside && justSnapped) {
+    justSnapped = false
+  }
+
+  if (forceApply || inside === ignoringMouse) {
+    ignoringMouse = !inside
+    island.setIgnoreMouseEvents(ignoringMouse, { forward: true })
+  }
+  return inside
+}
+
 function startPointerPoll(): void {
   pollTimer = setInterval(() => {
     if (!island || island.isDestroyed() || !island.isVisible()) return
-    if (movingIsland) return
+    if (movingIsland || dragOutActive) return
 
-    const p = screen.getCursorScreenPoint()
-    const b = island.getBounds()
+    const inside = syncIslandMouseIgnore(false)
     const side = currentSide()
-    const mode: ExpandMode = side === 'free' ? 'full' : expandMode
-    const inside = isInsideIsland(p.x - b.x, p.y - b.y, side, mode, dock.items.length > 0)
-
-    if (!inside && justSnapped) {
-      justSnapped = false
-    }
-
-    if (inside === ignoringMouse) {
-      ignoringMouse = !inside
-      island.setIgnoreMouseEvents(ignoringMouse, { forward: true })
-    }
 
     if (inside !== hovering) {
       hovering = inside
@@ -389,7 +400,7 @@ function createPanel(): void {
     webPreferences: webPrefs()
   })
   panel.on('blur', () => {
-    if (dragOutActive || panelPinned) return
+    if (dragOutActive || Date.now() < dragGraceUntil || panelPinned) return
     hidePanel()
   })
   panel.on('system-context-menu', (e) => e.preventDefault())
@@ -961,16 +972,83 @@ function registerIpc(): void {
     }
     const kind: ParcelKind =
       rawKind === 'box' || rawKind === 'scroll' || rawKind === 'envelope' ? rawKind : 'envelope'
+    const fromIsland = !!(island && !island.isDestroyed() && e.sender === island.webContents)
+    const icon = makeDragIcon(kind)
+    const t0 = Date.now()
+    const hadFocus = fromIsland && island ? island.isFocused() : (panel?.isFocused() ?? false)
     dragOutActive = true
     cancelCollapse()
+    let dragPollTimer: NodeJS.Timeout | null = null
+    let sawOutside = false
+    let pollTicks = 0
+    let returnedInside = false
+    if (fromIsland && island && !island.isDestroyed()) {
+      if (!hadFocus) island.focus()
+      if (store.data.settings.alwaysOnTop) {
+        island.setAlwaysOnTop(true, 'floating')
+      }
+      // 拖出前关闭 forward 鼠标钩子并开启纯 WS_EX_TRANSPARENT 穿透，防止透明区或钩子拦住外部投放目标；
+      // 拖到外部后若重新拖回岛/栈桥上方，则临时取消穿透以便在岛上安全取消放回而不误掉到背后桌面
+      ignoringMouse = true
+      island.setIgnoreMouseEvents(true)
+      dragPollTimer = setInterval(() => {
+        pollTicks++
+        if (!dragOutActive || !island || island.isDestroyed()) return
+        const p = screen.getCursorScreenPoint()
+        const b = island.getBounds()
+        const side = currentSide()
+        const mode: ExpandMode = side === 'free' ? 'full' : expandMode
+        const inside = isInsideIsland(p.x - b.x, p.y - b.y, side, mode, dock.items.length > 0)
+        if (!sawOutside) {
+          if (!inside) sawOutside = true
+          return
+        }
+        if (inside === ignoringMouse) {
+          ignoringMouse = !inside
+          if (inside) returnedInside = true
+          island.setIgnoreMouseEvents(ignoringMouse)
+        }
+      }, 16)
+    }
     try {
-      e.sender.startDrag({ file: files[0], files, icon: makeDragIcon(kind) })
+      e.sender.startDrag({ file: files[0], files, icon })
     } finally {
+      if (dragPollTimer) clearInterval(dragPollTimer)
+      const elapsedMs = Date.now() - t0
+      dragOutActive = false
+      dragGraceUntil = Date.now() + 600
+      let insideNow = false
+      if (fromIsland && island && !island.isDestroyed()) {
+        if (store.data.settings.alwaysOnTop) {
+          island.setAlwaysOnTop(true, 'screen-saver')
+        }
+        insideNow = syncIslandMouseIgnore(true)
+        hovering = insideNow
+        pushPose()
+      }
+      try {
+        writeFileSync(
+          join(app.getPath('userData'), 'drag-diag.log'),
+          JSON.stringify({
+            at: new Date().toISOString(),
+            from: fromIsland ? 'island' : 'panel',
+            hadFocus,
+            elapsedMs,
+            pollTicks,
+            sawOutside,
+            returnedInside,
+            insideNow,
+            fileCount: files.length,
+            iconEmpty: icon.isEmpty()
+          }) + '\n'
+        )
+      } catch {
+        /* ignore */
+      }
       if (!e.sender.isDestroyed()) e.sender.send('dock:dragEnded')
       setTimeout(() => {
-        dragOutActive = false
-        if (!hovering && !panel?.isVisible()) scheduleCollapse(1200)
-      }, 600)
+        if (!dragOutActive && !hovering && !panel?.isVisible()) scheduleCollapse(1200)
+      }, 650)
     }
   })
 

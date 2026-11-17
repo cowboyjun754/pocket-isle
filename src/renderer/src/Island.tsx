@@ -203,6 +203,7 @@ export function Island(): JSX.Element {
   const focusRef = useRef(focus)
   focusRef.current = focus
   const draggingParcelRef = useRef<DraggingParcel | null>(null)
+  const dragActiveIdRef = useRef<string | null>(null)
   const parcelCleanupRef = useRef<(() => void) | null>(null)
   const parcelSessionRef = useRef<{
     parcel: DraggingParcel
@@ -335,6 +336,7 @@ export function Island(): JSX.Element {
       triggerOtter(r.action, r.bubble, r.durationMs ?? 3000, 'react-wave', undefined, false)
     })
     const off7 = window.isle.onDragEnded(() => {
+      dragActiveIdRef.current = null
       draggingParcelRef.current = null
       parcelSessionRef.current = null
       setDraggingParcel(null)
@@ -616,7 +618,10 @@ export function Island(): JSX.Element {
   }
 
   const onDragEnter = (e: React.DragEvent): void => {
-    if (draggingParcelRef.current) return
+    if (draggingParcelRef.current) {
+      e.preventDefault()
+      return
+    }
     e.preventDefault()
     setDragOver(true)
     if (pose.mode === 'docked') window.isle.setExpandMode('peek')
@@ -624,16 +629,8 @@ export function Island(): JSX.Element {
 
   const onDragOver = (e: React.DragEvent): void => {
     if (draggingParcelRef.current) {
-      const pt = toStageCoordsWith(
-        e.clientX,
-        e.clientY,
-        poseRef.current,
-        draggingWinRef.current
-      )
-      if (isOnWater(pt.x, pt.y)) {
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'move'
-      }
+      e.preventDefault()
+      e.dataTransfer.dropEffect = chooseDropEffect(e.dataTransfer.effectAllowed)
       return
     }
     e.preventDefault()
@@ -653,18 +650,10 @@ export function Island(): JSX.Element {
     setDragOver(false)
     const activeDrag = draggingParcelRef.current
     if (activeDrag) {
+      dragActiveIdRef.current = null
       draggingParcelRef.current = null
       setDraggingParcel(null)
       setPointerDragPos(null)
-      const pt = toStageCoordsWith(
-        e.clientX,
-        e.clientY,
-        poseRef.current,
-        draggingWinRef.current
-      )
-      if (isOnWater(pt.x, pt.y)) {
-        sinkParcelIntoSea(activeDrag, pt.x, pt.y)
-      }
       return
     }
     const paths = extractPathsFromDataTransfer(e.dataTransfer, (f) => window.isle.getPathForFile(f))
@@ -1222,8 +1211,6 @@ export function Island(): JSX.Element {
                   onPointerDown={(e) => {
                     if (e.button === 2 || (e.button === 0 && unavailable)) {
                       startParcelPointerDrag(parcelInfo, slot, e)
-                    } else if (e.button === 0) {
-                      e.stopPropagation()
                     }
                   }}
                   onDragStart={(e) => {
@@ -1232,11 +1219,15 @@ export function Island(): JSX.Element {
                       return
                     }
                     e.preventDefault()
-                    e.stopPropagation()
-                    setHoveredParcelId(null)
                     draggingParcelRef.current = parcelInfo
-                    setDraggingParcel(parcelInfo)
+                    dragActiveIdRef.current = it.id
                     window.isle.startDrag([it.id], kind)
+                    window.requestAnimationFrame(() => {
+                      if (dragActiveIdRef.current === it.id) {
+                        setHoveredParcelId(null)
+                        setDraggingParcel(parcelInfo)
+                      }
+                    })
                   }}
                   onDoubleClick={(e) => {
                     e.stopPropagation()

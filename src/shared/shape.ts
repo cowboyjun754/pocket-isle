@@ -117,7 +117,7 @@ export function isInsideIsland(
   const localY = winY
 
   if (mode === 'docked') {
-    return localX >= 0 && localX <= VISIBLE_WIDTH.docked + 6 && localY >= 64 && localY <= 164
+    return localX >= 0 && localX <= VISIBLE_WIDTH.docked + 10 && localY >= 64 && localY <= 164
   }
   if (
     hasParcels &&
