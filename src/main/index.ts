@@ -792,8 +792,8 @@ function registerIpc(): void {
     return res
   })
 
-  handleTrusted('dock:setGroup', (_e, ids: unknown, group: unknown) => {
-    dock.setGroup(strArr(ids), typeof group === 'string' ? group : undefined)
+  handleTrusted('dock:setGroup', async (_e, ids: unknown, group: unknown) => {
+    await dock.setGroup(strArr(ids), typeof group === 'string' ? group : undefined)
     broadcast('dock:changed')
   })
 
@@ -1346,6 +1346,7 @@ function registerIpc(): void {
       if (ctrl.signal.aborted || isAbortError(err)) {
         return { ok: false, cancelled: true, message: p.cancelledDecor }
       }
+      emitOtterReaction({ action: 'idle' })
       const needsSetup = !!(err as { needsSetup?: boolean })?.needsSetup
       return {
         ok: false,

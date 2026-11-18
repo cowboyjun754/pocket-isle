@@ -12,6 +12,14 @@ import type {
   IslandSprout,
   Settings
 } from '../shared/types'
+import {
+  COPY_LIMIT_MAX_MB,
+  COPY_LIMIT_MIN_MB,
+  FOCUS_MAX_MINUTES,
+  FOCUS_MIN_MINUTES,
+  REST_MAX_MINUTES,
+  REST_MIN_MINUTES
+} from './settingsRules'
 import { sanitizeFileSummary } from './summaryGuard'
 
 export interface Data {
@@ -83,6 +91,11 @@ const DEFAULT_DATA: Data = {
   islandMemory: DEFAULT_ISLAND_MEMORY,
   focus: DEFAULT_FOCUS,
   dockSide: 'right'
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, Math.round(value)))
 }
 
 function normalizeSprouts(raw: unknown): IslandSprout[] {
@@ -176,16 +189,19 @@ export class Store {
                 )
               )
             : {}
-        const focusMin =
-          typeof mergedSettings.focusMinutes === 'number' &&
-          Number.isFinite(mergedSettings.focusMinutes)
-            ? Math.max(1, Math.min(180, Math.round(mergedSettings.focusMinutes)))
-            : 25
-        const restMin =
-          typeof mergedSettings.restMinutes === 'number' &&
-          Number.isFinite(mergedSettings.restMinutes)
-            ? Math.max(1, Math.min(60, Math.round(mergedSettings.restMinutes)))
-            : 5
+        const focusMin = clampInt(
+          mergedSettings.focusMinutes,
+          FOCUS_MIN_MINUTES,
+          FOCUS_MAX_MINUTES,
+          25
+        )
+        const restMin = clampInt(mergedSettings.restMinutes, REST_MIN_MINUTES, REST_MAX_MINUTES, 5)
+        mergedSettings.copyLimitMB = clampInt(
+          mergedSettings.copyLimitMB,
+          COPY_LIMIT_MIN_MB,
+          COPY_LIMIT_MAX_MB,
+          DEFAULT_SETTINGS.copyLimitMB
+        )
         mergedSettings.focusMinutes = focusMin
         mergedSettings.restMinutes = restMin
         mergedSettings.focusNotify =
