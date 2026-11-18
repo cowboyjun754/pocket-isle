@@ -3,7 +3,7 @@ export interface DataTransferLike {
   getData(format: string): string
 }
 
-/** 将 file:// URI 转换为本地 Windows 路径，非 file:// 协议或格式异常返回 null */
+/** Converts a file:// URI to a local Windows path, or returns null for non-file URIs / invalid formats. */
 export function parseFileUri(raw: string): string | null {
   const s = raw.trim()
   if (!/^file:/i.test(s)) return null
@@ -22,7 +22,7 @@ export function parseFileUri(raw: string): string | null {
   }
 }
 
-/** 识别单行文本是否为有效的本地绝对路径或 file:// URI */
+/** Recognizes whether a single line of text is a valid local absolute path or file:// URI. */
 export function parseLocalPathCandidate(raw: string): string | null {
   const s = raw.trim().replace(/^["']|["']$/g, '')
   if (!s) return null
@@ -54,9 +54,9 @@ function dedupePaths(paths: string[]): string[] {
 }
 
 /**
- * 从拖拽 DataTransfer 中提取本地文件路径：
- * 1. 优先读取原生文件列表（资源管理器/微信拖入）；
- * 2. 回退支持 IDE 标签页/文件树（ResourceURLs）、链接/路径（text/uri-list、text/html、text/plain）。
+ * Extracts local file paths from drag-and-drop DataTransfer payloads:
+ * 1. Prefers native file list entries (Explorer / chat apps);
+ * 2. Falls back to IDE tabs/trees (ResourceURLs), URI lists, HTML anchors, and plain-text paths.
  */
 export function extractPathsFromDataTransfer(
   dt: DataTransferLike,
@@ -123,7 +123,7 @@ export function extractPathsFromDataTransfer(
   return dedupePaths(candidates)
 }
 
-/** 根据拖出源的 effectAllowed 协商兼容的 dropEffect，避免拖拽链接或 IDE 标签时被 Chromium 禁止 */
+/** Negotiates a compatible dropEffect from source effectAllowed so Chromium accepts IDE tabs and links. */
 export function chooseDropEffect(effectAllowed?: string): 'copy' | 'link' | 'move' {
   const lower = (effectAllowed ?? '').toLowerCase()
   if (!lower || lower === 'uninitialized' || lower === 'all' || lower.includes('copy')) {

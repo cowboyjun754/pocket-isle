@@ -19,7 +19,7 @@ afterEach(() => {
 })
 
 describe('Store recovery & summary sanitization', () => {
-  it('加载旧存档时清洗畸形 summary 对象字段，防止渲染崩溃', () => {
+  it('sanitizes malformed summary fields when loading persisted data', () => {
     const dir = makeTempDir('pocket-isle-store-')
     writeFileSync(
       join(dir, 'data.json'),
@@ -60,10 +60,10 @@ describe('Store recovery & summary sanitization', () => {
     store.dispose()
   })
 
-  it('saveNow 写入失败时保留 dirty 标记并通知回调，恢复权限后可再次成功落盘', () => {
+  it('retains dirty flag and notifies callback on saveNow failure, recovering after permissions return', () => {
     const dir = makeTempDir('pocket-isle-store-err-')
     const store = new Store(dir)
-    // 创建同名目录阻塞 data.json.tmp 写入，模拟写盘失败
+    // Create a blocking directory named data.json.tmp to simulate write failure
     const blockingTmpDir = join(dir, 'data.json.tmp')
     mkdirSync(blockingTmpDir)
 

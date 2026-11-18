@@ -50,7 +50,7 @@ function writeAppPayload(targetAppDir, pkg) {
     )
   )
   if (!verifyBuiltOut(resolve(targetAppDir, 'out'))) {
-    throw new Error('构建产物校验不完整，已中止替换打包目录')
+    throw new Error('Build output is incomplete; aborted replacing packaged directory.')
   }
 }
 
@@ -78,20 +78,20 @@ function swapDirectories(stagingDir, targetDir, backupDir) {
 const srcElectronExe = resolve(electronDist, 'electron.exe')
 const electronInstallScript = resolve(root, 'node_modules/electron/install.js')
 if (!verifyBuiltOut(outDir)) {
-  console.error('请先运行 npm run build 生成完整的 out/ 构建产物')
+  console.error('Please run `npm run build` first to generate complete out/ artifacts.')
   process.exit(1)
 }
 if (!existsSync(srcElectronExe) && existsSync(electronInstallScript)) {
-  console.log('[package] 正在补全 Electron 二进制文件...')
+  console.log('[package] Downloading missing Electron binary...')
   execFileSync(process.execPath, [electronInstallScript], { stdio: 'inherit' })
 }
 if (!existsSync(srcElectronExe)) {
-  console.error('未找到 node_modules/electron/dist/electron.exe，请先运行 node node_modules/electron/install.js')
+  console.error('Missing node_modules/electron/dist/electron.exe. Run `node node_modules/electron/install.js` first.')
   process.exit(1)
 }
 
 buildPocketIsleIco(icoPath)
-console.log('[package] 已生成图标 build/icon.ico')
+console.log('[package] Generated icon build/icon.ico')
 
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
 
@@ -116,14 +116,14 @@ if (!runtimeReady) {
   }
   writeAppPayload(resolve(releaseStaging, 'resources/app'), pkg)
   if (!existsSync(stagedExe)) {
-    console.error('[package] 临时打包目录缺少 停靠岛.exe，已取消替换')
+    console.error('[package] Staging directory is missing 停靠岛.exe; aborted swap.')
     process.exit(1)
   }
   try {
     swapDirectories(releaseStaging, releaseDir, releaseBackup)
   } catch (err) {
     console.error(
-      '[package] 替换打包目录失败（请先退出正在运行的 停靠岛.exe 再重试）：',
+      '[package] Failed to replace packaged directory (close any running 停靠岛.exe and retry):',
       err.message
     )
     process.exit(1)
@@ -136,12 +136,12 @@ if (!runtimeReady) {
     swapDirectories(appStaging, resourcesApp, appBackup)
   } catch (err) {
     rmSync(appStaging, { recursive: true, force: true })
-    console.error('[package] 更新 resources/app 失败（可能被正在运行的程序占用）：', err.message)
+    console.error('[package] Failed to update resources/app (files may be locked by a running instance):', err.message)
     process.exit(1)
   }
 }
 
-// 为项目根目录创建带水彩图标的快捷方式（无任何黑框命令行）
+// Create a desktop-style root shortcut with the generated watercolor icon (no console window)
 try {
   const psScript = [
     '$wsh = New-Object -ComObject WScript.Shell',
@@ -154,9 +154,9 @@ try {
   ].join('; ')
   const encoded = Buffer.from(psScript, 'utf16le').toString('base64')
   execFileSync('powershell.exe', ['-NoProfile', '-EncodedCommand', encoded], { stdio: 'ignore' })
-  console.log('[package] 已创建快捷方式 停靠岛.lnk')
+  console.log('[package] Created shortcut 停靠岛.lnk')
 } catch {
-  console.warn('[package] 跳过创建快捷方式（不影响 exe 直接运行）')
+  console.warn('[package] Skipped shortcut creation (standalone exe still works directly)')
 }
 
-console.log(`[package] 打包完成：${exePath}`)
+console.log(`[package] Packaging complete: ${exePath}`)

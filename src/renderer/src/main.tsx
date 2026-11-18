@@ -3,7 +3,7 @@ import { Island } from './Island'
 import { Panel } from './Panel'
 import './base.css'
 
-// 防止文件拖到窗口空白处时，页面被导航成该文件
+// Prevent Chromium from navigating to a dropped file when dropped outside target areas
 window.addEventListener('dragover', (e) => e.preventDefault())
 window.addEventListener('drop', (e) => e.preventDefault())
 

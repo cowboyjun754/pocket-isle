@@ -8,7 +8,7 @@ interface ForegroundDecorSvgProps {
   starfishHop: boolean
 }
 
-/** 渲染全展开岛屿前景色饰物：草坪手绘小花苗、野餐茶席、沙滩海星与贝壳。 */
+/** Renders expanded island foreground scenery: turf sprouts, picnic tea set, starfish, and shell. */
 export function ForegroundDecorSvg({
   sprouts,
   picnicSteaming,
@@ -136,7 +136,7 @@ interface StageFxSvgProps {
   particles: FloatingParticle[]
 }
 
-/** 渲染舞台动效层：栈桥暖黄发光、海面微光、木屋炊烟、萤火虫、细雨、水波与互动粒子。 */
+/** Renders dynamic stage FX SVG layers: dock drop glow, water shimmers, cabin smoke, fireflies, rain, ripples & particles. */
 export function StageFxSvg({
   effectiveMode,
   ambience,

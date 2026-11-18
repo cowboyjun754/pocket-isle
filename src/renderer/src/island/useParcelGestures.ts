@@ -27,10 +27,10 @@ interface ParcelGestureDeps {
 }
 
 /**
- * 管理栈桥包裹的三类手势交互：
- * 1) 左键原生文件拖出（`startNativeDrag` + `handleOutboundDragPosition`）
- * 2) 右键 / 不可用条目的舞台内指针抓拖入海（`startParcelPointerDrag`）
- * 3) 名牌「扔海里」小手自动抛投动画（`throwParcelWithHand`）与入水沉没特效。
+ * Manages the three parcel gesture interactions on the pier:
+ * 1) Left-drag native OS file drag-out (`startNativeDrag` + `handleOutboundDragPosition`)
+ * 2) Right-drag / unavailable-item in-stage pointer drag to toss into the sea (`startParcelPointerDrag`)
+ * 3) Nameplate sea-throw button animation (`throwParcelWithHand`) and splash removal effects.
  */
 export function useParcelGestures({
   poseRef,
@@ -84,7 +84,7 @@ export function useParcelGestures({
     (parcel: DraggingParcel, x: number, y: number): void => {
       const uid = Date.now() + Math.random()
       setSinkingIds((prev) => new Set(prev).add(parcel.id))
-      // 放手点与握持时手的位置严格一致：(x, y - parcel.h - 12)
+      // Match release anchor strictly with grab hand position: (x, y - parcel.h - 12)
       setReleasingHands((prev) => [...prev.slice(-3), { uid, x, y: y - parcel.h - 12 }])
       setSinkingParcels((prev) => [
         ...prev.slice(-4),
@@ -127,7 +127,7 @@ export function useParcelGestures({
       setHoveredParcelId(null)
       setDraggingParcel(null)
       setPointerDragPos(null)
-      // 先在栈桥原位伸手抓起（平滑抬起过渡），再连同小手带到近海松手入水沉没
+      // Lift smoothly on the pier first, then carry out to sea before releasing into water
       setThrowingParcel({ id: parcel.id, x: slot.x, y: slot.y })
       const targetX = 104 + idx * 11
       const targetY = 178

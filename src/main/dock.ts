@@ -28,7 +28,7 @@ interface UndoBatch {
 
 const DEFAULT_UNDO_TTL_MS = 20_000
 
-/** 文件口袋：串行化变更、去重、配额预留、自动复制与短时误删撤销 */
+/** Staged file dock: serialized mutations, deduplication, quota reservation, safe copies & short-time undo. */
 export class Dock {
   private opChain: Promise<void> = Promise.resolve()
   private pendingCopyBytes = 0
@@ -226,7 +226,7 @@ export class Dock {
     })
   }
 
-  /** 将内存缓冲区（如剪贴板截图或文本）保存为码头副本 */
+  /** Saves an in-memory buffer (e.g., clipboard screenshot or text snippet) as a dock copy. */
   async addBufferItem(name: string, buf: Buffer, sourcePath: string): Promise<AddResult> {
     return this.serialize(async () => {
       const reserved = await this.reserveQuotaForCopy(buf.length)
@@ -350,7 +350,7 @@ export class Dock {
     })
   }
 
-  /** 应用退出前同步清理尚未到期的撤销缓冲区副本目录（若失败则记录到待清理墓碑） */
+  /** Synchronously purges pending undo-buffer copy dirs before app exit (records tombstones on failure). */
   flushPendingDeletesSync(): void {
     const batch = this.undoBatch
     if (!batch) return
@@ -371,7 +371,7 @@ export class Dock {
     }
   }
 
-  /** 启动时对账：重试失败删除、清理无主孤儿副本目录，并在未启用诊断日志时清除旧 drop-log.txt */
+  /** Startup reconciliation: retries failed deletes, sweeps orphan copy dirs, and deletes legacy drop-log.txt when disabled. */
   async reconcileCopies(): Promise<void> {
     return this.serialize(async () => {
       await this.retryPendingDeletes()
@@ -434,7 +434,7 @@ export class Dock {
     }
   }
 
-  /** 修改应用内分组（仅改应用内组织，不改磁盘原文件） */
+  /** Updates virtual in-app groups without touching original files on disk. */
   setGroup(ids: string[], group: string | undefined): Promise<void> {
     return this.serialize(async () => {
       const set = new Set(ids)
@@ -447,7 +447,7 @@ export class Dock {
     })
   }
 
-  /** 批量写入 AI 分组与文件速览 */
+  /** Applies batch AI-generated groups and file summaries. */
   applyAiUpdates(updates: Map<string, { group: string; summary: FileSummary }>): Promise<void> {
     return this.serialize(async () => {
       this.store.update((d) => {
@@ -462,7 +462,7 @@ export class Dock {
     })
   }
 
-  /** 只返回仍然存在的文件路径，用于拖出 */
+  /** Returns only existing disk paths eligible for outbound OS dragging. */
   pathsFor(ids: string[]): string[] {
     return ids
       .map((id) => this.find(id))
@@ -515,12 +515,12 @@ export class Dock {
     }
   }
 
-  /** 只删除应用副本目录里的内容，绝不碰其他位置；删除失败记入待清理墓碑 */
+  /** Deletes contents strictly inside the managed copies root; records failed deletes as tombstones. */
   private async deleteCopy(p: string, sizeHint = 0): Promise<void> {
     await this.tryRemoveDir(dirname(p), sizeHint)
   }
 
-  /** 仅在显式开启诊断日志时记录拖入的原始路径 */
+  /** Appends dropped paths to diagnostic log only when POCKET_ISLE_DROP_LOG=1 is enabled. */
   private async log(p: string, copy: boolean): Promise<void> {
     if (!this.enableDropLog) return
     const line = `${new Date().toISOString()}\t${copy ? 'COPY' : 'REF '}\t${p}\n`

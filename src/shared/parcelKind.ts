@@ -51,7 +51,7 @@ const BOX_EXTS = new Set([
   'apk'
 ])
 
-/** 根据扩展名映射水彩包裹外观：文档类→卷轴，图片/音视频/压缩包→纸箱，文本/代码/其他→信封 */
+/** Maps file extensions to parcel sprites: documents -> scroll, images/media/archives -> box, code/text/other -> envelope. */
 export function getParcelKindForExt(ext?: string): ParcelKind {
   const clean = (ext ?? '').trim().replace(/^\./, '').toLowerCase()
   if (SCROLL_EXTS.has(clean)) return 'scroll'

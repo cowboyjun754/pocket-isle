@@ -1,159 +1,164 @@
-# 停靠岛（Pocket Isle）
+# Pocket Isle (停靠岛)
 
-> 一座停靠在桌面边缘的手绘水彩小岛：把**高频文件临时中转**、**治愈系桌搭减压互动**、**专注番茄钟**与 **AI 水獭搭档**轻量地融为一体。
-
----
-
-## 一、项目名称与定位
-
-- **中文名称**：停靠岛
-- **英文名称**：Pocket Isle
-- **运行平台**：Windows 10 / 11 桌面端浮窗应用（Electron 33 + React 18 + TypeScript + electron-vite）
-- **设计原则**：**绝不改动磁盘原文件** · **轻量不打扰** · **无网离线全功能可用**
+> A hand-painted watercolor floating island docked at the edge of your Windows desktop — combining **zero-friction file staging**, **cozy interactive desktop companionship**, a **Pomodoro focus timer**, and an **AI otter assistant** in one lightweight Electron app.
 
 ---
 
-## 二、制作背景
+## Overview
 
-平时在 Windows 上办公、写代码或沟通协作时，常会遇到几个零碎痛点：
-
-1. **临时文件中转混乱**：在微信、浏览器、桌面和各类文件夹之间来回传图或传文档时，文件常常随手扔满桌面；而微信缓存或系统临时目录里的文件一旦过期清理，拖出或再找就很麻烦。
-2. **传统剪切板/中转面板太冰冷**：桌面工具栏如果只是僵硬的列表框，一直悬浮会显得占地方、压抑；收起来又不够随手可用。
-3. **工作节奏与轻陪伴**：希望工作时能有一个安静的 25+5 番茄钟搭档，在文件堆里理清这轮要做什么，间隙时还能在桌面上逗逗小动物、放放纸船放松一下。
-
-于是就有了 **停靠岛（Pocket Isle）** —— 一座安静趴在屏幕左右边缘的 320×240 透明水彩小岛：平时只露出一段 56px 的木栈桥与探头小水獭；靠近或拖入文件时自然滑出接货；随时左键把文件传去微信/桌面，或右键抓起扔进海里“扑通”一声收走。
+- **Project Name**: Pocket Isle (`停靠岛`)
+- **Platform**: Windows 10 / 11 desktop widget & utility (`Electron 45` · `React 18` · `TypeScript` · `electron-vite` · `Vitest`)
+- **App UI Language**: Simplified Chinese (`zh-CN`), while repository documentation, scripts, tests, and code comments are maintained in English.
+- **Design Principles**: **Never alter original disk files** · **Lightweight & unobtrusive** · **100% functional offline without AI**
 
 ---
 
-## 三、核心功能一览
+## Why Pocket Isle?
 
-### 1. 三段式贴边停靠与丝滑窗口交互
-- **docked（停靠态，露 56px）**：平时安静停靠在屏幕左/右边缘，只露栈桥前端、系船桩、文件数角标与坐等的水獭，透明背景区域鼠标完全穿透，不挡底层任何窗口操作。
-- **peek（迎宾半开态，露 148px）**：鼠标或拖文件靠近栈桥时自动滑出完整水平木栈桥，按文件类型呈现**卷轴 / 纸箱 / 信封**包裹（超过 3 个显示 `+N`），悬停即亮手绘名牌与 AI 一句话简介。
-- **full（全展开态，320×240）**：点击栈桥展开整座小岛，拖动岛屿靠近左右边缘 64px 内松手自动吸边停靠，拉向屏幕中间则切换自由悬浮；由渲染端 `requestAnimationFrame` 对齐刷新率平滑驱动位移。
+Everyday work on Windows often creates small friction points:
 
-### 2. 零冲突手势的文件中转站
-- **随手暂存**：
-  - 从资源管理器、微信等应用直接把文件拖到小岛或面板即可暂存；
-  - 在小岛或面板焦点下按 **`Ctrl+V`**，直接把剪贴板里的**截图或纯文本**生成副本暂存上岛；
-  - **存储安全机制**：普通磁盘路径仅记录引用；来自 `%TEMP%`、微信缓存目录等临时路径及剪贴板的内容自动复制一份安全副本到应用数据目录（默认总上限 2 GB，可在设置中调整）。
-- **双键分流手势**：
-  - **左键拖动包裹**：触发系统原生 `startDrag`，可直接把文件拖进微信聊天窗、桌面或浏览器上传框；
-  - **右键拖动包裹入海**（或点击悬停名牌上的 **`🌊 扔海里`**）：全程由手绘小手抓起包裹移向海面、张手坠海激起水花与双圈涟漪并移除记录（只删暂存记录/应用内部副本，**绝不删磁盘原文件**）。
-- **430×580 操作面板**（右键/双击栈桥打开）：
-  - 支持右上角 **`📌 钉住面板`**（失焦不自动隐藏）与系统原生标题栏拖动；
-  - 支持关键词检索（`Ctrl+F`）、自定义/AI 分组、图片缩略图点击放大预览、批量多选与定位原文件。
+1. **Messy temporary file transfers**: Passing screenshots, exports, and documents back and forth between chat apps (e.g., WeChat), browsers, and folders clutters the Desktop—and files inside `%TEMP%` or chat caches can expire or break drag-and-drop paths.
+2. **Cold utility toolbars**: Rigid always-visible drop zones eat screen space, whereas hidden tools aren't there when you reach for them.
+3. **Lightweight focus companionship**: A quiet 25+5 Pomodoro buddy that helps organize work batches and lets you unwind on a tiny painted island between sessions.
 
-### 3. 全岛互动与持久记忆
-- **自由桌搭与昼夜切换**：野花丛、木长椅、小路灯、圆冠树、小木屋、小风车 6 件手绘装饰自由开关；支持白天日光与夜晚暖光切换。
-- **夜晚与自然细节**：夜间出现缓缓明灭的草地萤火虫与海面月光微漾，平时海面也有柔和反光、风车随微风轻摆、木屋烟囱飘出轻烟。
-- **持久小岛记忆**：在草地空白处点击种下的小花苗、手动点亮/关闭的路灯暖光和木屋暖窗状态会持久写入本地存储，重启应用依然延续陪伴。
-- **全岛趣味互动**：点击小水獭、长椅、野花（飞蝴蝶）、树冠（落绿叶）、野餐茶席（冒热茶与爱心）、岸边海星、海水（泛涟漪）以及拖动折纸小船放漂。
-
-### 4. AI 水獭搭档与独立专注计时
-- **多格式本地正文读取（零重外部解析依赖）**：
-  - 支持常见文本/代码/Markdown/CSV；
-  - 支持 `.docx`（正文 XML）、`.pptx`（按页提取每张幻灯片文字）、`.xlsx`（工作表名 + 共享字符串与前 40 行表格预览）；
-  - 支持解压 `FlateDecode` PDF 内容流及 `ToUnicode` CMap 中英文文本提取（纯扫描图片 PDF 如实标记为 `meta-only`）；
-  - 可在设置中按需开启 **Vision 图片识别**，压缩截图/图片缩略图交由多模态模型识别画面内容。
-- **AI 能力矩阵（均支持手动触发与随时点击「取消」中止请求）**：
-  - **✦ AI 整理**：自动归纳分组并生成每份文件的要点速览；
-  - **✦ 联合速览**：选中 2～6 份相关文件一键串读对比/整合行动清单，生成可一键 **复制 Markdown** 的汇总卡片；
-  - **AI 帮我拆解**：结合当前目标与关联文件，拆出 1 个 25 分钟小目标和 3 条可勾选微步骤；
-  - **AI 推荐布置**：根据心情词推荐桌搭与昼夜搭配。
-- **兼容本地与云端大模型**：支持 OpenAI 兼容 `/v1/chat/completions` 接口，内置 **DeepSeek、通义千问、OpenAI、Ollama（本地 `localhost:11434`）与 LM Studio（本地 `127.0.0.1:1234`）** 快速模板，本地环回地址免填 API Key。
-- **独立 25+5 专注番茄钟**：锁屏或休眠自动暂停；专注进行期间小水獭自动保持安静不弹气泡打扰。
+**Pocket Isle** stays tucked along the left or right screen edge as a `320×240` transparent watercolor island: idling down to a `56px` wooden pier with a peeking otter, gliding out smoothly on hover or drag-in, supporting native drag-out to external apps, or letting you toss staged parcels back into the sea with a splash.
 
 ---
 
-## 四、技术栈与项目结构
+## Key Features
 
-- **技术栈**：Electron 33 · React 18 · TypeScript · electron-vite · Vitest
-- **主要目录结构**：
+### 1. Three-Stage Edge Docking & Smooth Window Physics
+- **`docked` (`56px` exposed)**: Rests unobtrusively along the left/right screen edge showing the pier tip, mooring bollard, item count badge, and sitting otter. Transparent regions are click-through (`setIgnoreMouseEvents(..., { forward: true })`) so underlying windows stay unobstructed.
+- **`peek` (`148px` exposed)**: Slides out the full wooden pier on mouse hover or file drag-over, displaying the 3 most recent parcels mapped by file type (**scroll** for documents, **box** for images/archives, **envelope** for text/code, plus `+N` badge when more exist), with hover nameplates and one-line AI summaries.
+- **`full` (`320×240`)**: Left-click the pier to expand the entire island. Dragging within `64px` of either screen edge snaps it back cleanly; dragging toward the center enters free-floating mode. Window movement runs via `requestAnimationFrame`-synced `setPosition` displacement to avoid DWM redraw stutter, and multi-monitor `display-metrics-changed` / `display-removed` events automatically clamp and reconcile positions.
+
+### 2. Conflict-Free File Staging & Gestures
+- **Instant Capture**:
+  - Drag local files or folders onto the island or panel.
+  - Press **`Ctrl+V`** while focused on the island or panel to snapshot clipboard images or plain text into safe local copies.
+  - **Safe Storage Policy**: Normal local paths are stored as references without copying; items from `%TEMP%`, app cache directories, or the clipboard are safely copied into `%APPDATA%\pocket-isle\dock-copies` (configurable quota, default `2 GB`, with pre-reserved atomic concurrency checks and tombstone cleanup).
+- **Dual Mouse Gestures**:
+  - **Left-drag a parcel**: Invokes native OS `webContents.startDrag` to drop files directly into chat windows, desktops, or browser upload inputs.
+  - **Right-drag into the sea** (or click **`🌊 扔海里`** on the hover card): An animated hand lifts the parcel and drops it into the water with ripples, removing only the staged entry / app-managed copy (**original disk files are never deleted**), with a 20-second undo pill/banner.
+- **430×580 Control Panel** (right-click or double-click the pier):
+  - Supports **`📌`** focus-pinning and native titlebar dragging.
+  - Includes keyword search (`Ctrl+F`), inline group editing, image thumbnails (cached cleanly by `mtimeMs`), 64 KB plain-text/code preview modal, clipboard copy actions, and reveal-in-Explorer.
+
+### 3. Cozy Island Interactions & Persistent Memory
+- **6 Modular Watercolor Decorations + 3 Ambiences**: Toggle wildflowers, wooden bench, street lamp, round tree, cozy cabin, and rotating windmill blades independently; switch between **Day**, **Night** (warm glow + fireflies), and **Rain** (diagonal rain streaks + sea rings).
+- **Persistent Island Memory**: Grass sprouts planted by clicking empty turf, manual lamp lighting, and cabin window warmth persist across restarts.
+- **Interactive Spots & Toy**: Tap the otter, bench, wildflowers (butterflies), tree canopy (falling leaves), picnic tea set (steam & hearts), starfish, ocean ripples, or drag the paper boat onto the waves.
+
+### 4. Local Document Reader, Focus Timer & AI Otter Companion
+- **Zero-Heavy-Dependency Local Extraction** (offloaded to `worker_threads` with byte/concurrency budgets & abort support):
+  - Reads plain text/code/Markdown/CSV files.
+  - Extracts `.docx` paragraph XML, `.pptx` slide text, `.xlsx` sheet previews (workbook sheets, shared strings, first 40 rows), and `.pdf` `FlateDecode` streams / `ToUnicode` CMap text (image-only PDFs are reported honestly as `meta-only`).
+  - Optional compressed **Vision** image thumbnail analysis.
+- **Cancellable AI Workflows**:
+  - **AI Organize (`✦ AI 整理`)**: Groups staged items (selected / search-filtered / all) and generates concise summaries & cautions.
+  - **Joint Summary (`✦ 联合速览`)**: Cross-reads 2–6 selected files with an optional focus direction prompt and produces a copyable Markdown card with honest file-read receipts.
+  - **Focus Breakdown**: Turns a focus goal plus explicitly selected documents into 1 target and 3 checkable micro-steps.
+  - **Decor Recommender**: Suggests island decorations and ambience matching your mood prompt.
+- **OpenAI-Compatible Endpoints & Strict Origin Secrets**:
+  - Supports any `/v1/chat/completions` endpoint with templates for **DeepSeek, Qwen (DashScope), OpenAI, local Ollama (`localhost:11434`), and LM Studio (`127.0.0.1:1234`)**.
+  - Remote endpoints require `https://` (`http://` restricted to loopback hosts).
+  - API keys are stored per normalized origin (`protocol + host + port`) using Electron `safeStorage` encryption and never exposed back to the renderer (`hasApiKey` only).
+- **Independent Focus Timer**: Customizable presets & durations (`1–180m` focus, `1–60m` rest), 15s checkpoint persistence, auto-pause on screen lock/suspend, desktop completion notifications, and Web Audio chime.
+
+---
+
+## Tech Stack & Architecture
+
+- **Stack**: Electron `45.3.4` · React `18` · TypeScript `5.6` · `electron-vite 2.3.0` · Vitest `2.1`
+- **Repository Layout**:
   ```text
   src/
-  ├── main/                 # Electron 主进程（窗口生命周期、穿透/吸附、文件口袋、Store、AI 解析与专注计时）
-  │   ├── index.ts          # 窗口管理、IPC 来源守卫与系统托盘
-  │   ├── dock.ts           # 文件口袋暂存、并发去重、配额预留与短时撤销恢复
-  │   ├── aiSecrets.ts      # 按服务源隔离并通过 Electron safeStorage 加密保存密钥
-  │   ├── fileExtractor.ts  # 纯文本/Office/PDF 正文提取（配合 extractWorker.ts 后台线程解析）
-  │   ├── aiService.ts      # AI 批量提取预算、Schema 清洗与接口封装
-  │   ├── focusTimer.ts     # 独立番茄钟状态机（含定期检查点持久化）
-  │   ├── store.ts          # 本地 JSON 原子持久化（含小岛记忆与失败重试）
-  │   └── ...               # 路径规则、剪贴板命名、设置校验及对应单测
-  ├── preload/              # contextBridge 安全暴露 window.isle API
-  ├── shared/               # 前后端共享类型、舞台几何热区、多屏重算、AI 提供商识别及单测
-  └── renderer/             # 两个透明无边框前端视图（#island 与 #panel）
-      └── src/
-          ├── Island.tsx    # 小岛舞台、包裹手势、水獭状态与手绘动画
-          ├── Panel.tsx     # 码头 / 专注 / 桌搭 / 设置 4 页签操作面板
-          └── assets/       # 分层手绘水彩 PNG 美术资产
+  ├── main/
+  │   ├── index.ts                # Windows, tray, pointer polling, IPC sender guards, W3C async clipboard & safeStorage
+  │   ├── dock.ts                 # Staging list, dedup, reserved-quota copies, undo & tombstone reconciliation
+  │   ├── aiSecrets.ts            # Per-origin encrypted credential store & URL scheme enforcement
+  │   ├── fileExtractor.ts        # Text / DOCX / PPTX / XLSX / PDF parser
+  │   ├── extractWorker.ts        # Worker thread entry for heavy document parsing
+  │   ├── workerExtractRunner.ts  # Worker lifecycle, abort & cleanup coordinator
+  │   ├── summaryGuard.ts         # Schema sanitizer for AI & persisted summary payloads
+  │   ├── aiService.ts            # Prompting, budgets, abort propagation & OpenAI-compatible client
+  │   ├── focusTimer.ts           # Focus/rest timer state machine with checkpoint flushing
+  │   ├── store.ts                # Atomic JSON persistence & dirty-flag recovery callbacks
+  │   └── ...                     # Clipboard naming, path rules, settings rules, icon renderer & unit tests
+  ├── preload/
+  │   └── index.ts                # Sandboxed contextBridge window.isle API
+  ├── shared/
+  │   ├── types.ts                # Shared IPC contracts & domain models
+  │   ├── shape.ts                # Stage geometry, hit regions & multi-display clamping math
+  │   ├── dropPaths.ts            # Drag-and-drop payload extraction & dropEffect rules
+  │   ├── parcelKind.ts           # Extension-to-parcel sprite mapping
+  │   └── aiProvider.ts           # Provider origin normalization & display metadata
+  └── renderer/src/
+      ├── Island.tsx              # Desktop island coordinator
+      ├── island/                 # Modularized stage math, PNG assets, parcel gestures, SVG decor & hit regions
+      ├── Panel.tsx               # Operations panel coordinator
+      ├── panel/                  # Modularized Dock/Focus/Build/Settings tabs, PreviewModal & useAiTask hook
+      ├── util.ts                 # Formatting & explicit AI selection-scope helpers
+      └── assets/                 # Layered hand-painted watercolor PNG assets
+  scripts/
+  ├── make-ico.mjs                # Pure-Node multi-size Windows .ico generator
+  └── package-win.mjs             # Builds standalone release/停靠岛/ directory & shortcut
   ```
 
 ---
 
-## 五、安装、运行与使用说明
+## Getting Started (Windows)
 
-### 1. 环境准备
-- 操作系统：**Windows 10 / 11**
-- 运行环境：**Node.js 18+**
+### Prerequisites
+- **OS**: Windows 10 / 11 (x64)
+- **Node.js**: **v22.12.0+** (required by Electron 45)
 
-### 2. 本地构建与启动
+### Install, Run & Package
 
 ```bash
-# 1. 克隆仓库
+# 1. Clone the repository
 git clone https://github.com/cowboyjun754/pocket-isle.git
 cd pocket-isle
 
-# 2. 安装依赖
+# 2. Install npm packages
 npm install
 
-# 3. 生产构建并启动 Electron（或打包后双击 停靠岛.lnk / 启动停靠岛.vbs）
+# 3. Ensure Electron 45 binary & type definitions are downloaded (required before tsc/dev/package)
+node node_modules/electron/install.js
+
+# 4. Build and launch in Electron
 npm run build
 npx electron .
 
-# 打包 Windows 独立目录版（生成 release/停靠岛/停靠岛.exe 与 停靠岛.lnk）
+# Package standalone portable Windows folder (outputs release/停靠岛/停靠岛.exe & shortcut)
 npm run package
 
-# 开发调试模式（热重载）
+# Hot-reload dev mode
 npm run dev
 ```
 
-Windows 下日常唤起可直接双击 [`停靠岛.lnk`](停靠岛.lnk)；需要重启切换新版时可双击 [`启动停靠岛.bat`](启动停靠岛.bat)（调用 [`启动停靠岛.vbs`](启动停靠岛.vbs) 精准匹配当前目录实例退出后重新拉起：优先启动已打包的 `release/停靠岛/停靠岛.exe`，若尚未打包则按需执行 `npm run build` 并以 `electron.exe` 启动；源码修改后请先运行 `npm run build` 或 `npm run package`）。
+For silent relaunches on Windows without leaving a console window open, you can run `start-pocket-isle.bat` (or `start-pocket-isle.vbs`), which gracefully signals `--quit` to any existing instance matching the workspace binary before launching the packaged or dev build.
 
-### 3. 日常使用说明
-- **展开与打开面板**：
-  - 鼠标靠近屏幕边缘的栈桥自动滑出半开态；左键点击栈桥完全展开；
-  - 右键轻点栈桥/水獭或双击栈桥，打开 430×580 操作面板；
-  - 全局快捷键 **`Ctrl + Alt + Space`** 可随时一键显隐小岛（也可通过系统托盘图标重置左右停靠位置或退出）。
-- **文件接收与传出**：
-  - 拖入任意本地文件到小岛或面板，或按 **`Ctrl + V`** 粘贴剪贴板截图/文字；
-  - **左键拖动**栈桥上的包裹（或面板列表条目）即可拖进微信、桌面、浏览器或其他软件；
-  - **右键按住拖动**栈桥上的包裹扔入海面，或悬停点击名牌上的 **「🌊 扔海里」** 移出码头（不删磁盘原文件）；
-  - 双击包裹可直接使用系统默认程序打开。
-- **AI 配置说明**：
-  - 打开面板右上角 **「⚙ 设置」**，点击常用模板（如 DeepSeek、通义千问、OpenAI 或本地 Ollama / LM Studio），按服务源独立加密保存密钥，填好后可先点 **「测试连接」** 验证（测试不会覆写已保存配置）；
-  - 所有配置与加密密钥均只保存在本地用户数据目录，不配置 AI 密钥时，文件中转、桌搭互动与专注计时仍可 100% 离线使用。
-
-### 4. 开发与自检命令
+### Verification Commands
 
 ```bash
-# TypeScript 严格类型检查
+# Strict TypeScript check
 npm run typecheck
 
-# 运行 Vitest 单元测试
+# Unit test suite (13 test files, 69 tests)
 npm test
 
-# 构建主进程、preload 与渲染层产物
+# Production build (main + preload + renderer)
 npm run build
 
-# 打包 Windows 独立版（build/icon.ico 与 release/停靠岛/停靠岛.exe）
+# Full Windows standalone packaging
 npm run package
 ```
 
 ---
 
-## 隐私与安全声明
+## Privacy & Data Handling
 
-- 除用户明确点击发起 AI 分析或「测试连接」时向用户自己配置的大模型 API 端点发送提取片段外，应用没有任何后台遥测或联网上报；
-- 暂存列表中的普通本地文件仅做路径引用，在应用内分组与移除均不会更改或删除用户的原始磁盘文件。
+- **Zero Telemetry**: Aside from user-initiated AI requests or "Test Connection" checks sent strictly to the user-configured LLM endpoint, Pocket Isle performs no background network requests or analytics.
+- **Local-Only User State**: Settings, staged references, copies (`dock-copies`), and `safeStorage`-encrypted credentials live strictly in `%APPDATA%\pocket-isle\data.json` outside the repository and packaged folder.
+- **Original Files Never Touched**: Grouping, summarizing, clearing, or tossing parcels into the sea only modifies Pocket Isle's internal dock index or its own temporary copies—never your original disk files.

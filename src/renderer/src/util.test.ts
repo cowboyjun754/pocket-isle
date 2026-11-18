@@ -17,12 +17,12 @@ function makeItem(id: string, name: string): DockItem {
 }
 
 describe('AI scope selection helpers', () => {
-  it('专注页未勾选任何文件时，resolveBreakdownDocIds 返回空数组而非自动附带最近文件', () => {
+  it('returns an empty array in resolveBreakdownDocIds when no docs are explicitly checked', () => {
     expect(resolveBreakdownDocIds(new Set())).toEqual([])
     expect(resolveBreakdownDocIds(new Set(['a', 'b']))).toEqual(['a', 'b'])
   })
 
-  it('码头 AI 整理优先发送已勾选条目，搜索过滤且零勾选时仅发送筛选出的条目', () => {
+  it('prioritizes selected items, then filtered items on non-empty search, then all items in resolveOrganizeScope', () => {
     const a = makeItem('1', 'math.md')
     const b = makeItem('2', 'invoice.pdf')
     const c = makeItem('3', 'math-notes.md')
@@ -55,7 +55,7 @@ describe('AI scope selection helpers', () => {
     ).toEqual({ targetIds: undefined, count: 3, mode: 'all' })
   })
 
-  it('formatDurationMmSs 正确向上取整到秒并处理边界值', () => {
+  it('formats countdown milliseconds with ceiling seconds and clamps negatives', () => {
     expect(formatDurationMmSs(0)).toBe('00:00')
     expect(formatDurationMmSs(900)).toBe('00:01')
     expect(formatDurationMmSs(5 * 60 * 1000)).toBe('05:00')

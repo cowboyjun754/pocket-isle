@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 describe('Dock.add deduplication', () => {
-  it('拖回应用内副本路径时跳过重复暂存，避免自复制或产生悬空引用', async () => {
+  it('skips duplicate staging when re-dropping internal copy paths to avoid self-copy or dangling refs', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const tempDir = makeTempDir('pocket-isle-temp-')
     const normalDir = makeTempDir('pocket-isle-src-')
@@ -36,13 +36,13 @@ describe('Dock.add deduplication', () => {
     expect(dock.items).toHaveLength(1)
     expect(dock.items[0].isCopy).toBe(true)
 
-    // 拖出副本路径再拖回面板/小岛时应识别为已存在条目
+    // Re-dropping a copy dragged out from the dock must recognize it as already staged
     const reDropCopy = await dock.add([dock.items[0].path])
     expect(reDropCopy.added).toBe(0)
     expect(reDropCopy.skipped).toBe(1)
     expect(dock.items).toHaveLength(1)
 
-    // 剪贴板写入的副本路径同样不应重复添加
+    // Clipboard copy paths must likewise not be duplicated on re-drop
     const clipRes = await dock.addBufferItem('note.txt', Buffer.from('hello'), 'clipboard://text')
     expect(clipRes.added).toBe(1)
     const clipItem = dock.items.find((i) => i.sourcePath === 'clipboard://text')!
@@ -51,7 +51,7 @@ describe('Dock.add deduplication', () => {
     expect(reDropClip.skipped).toBe(1)
     expect(dock.items).toHaveLength(2)
 
-    // 普通磁盘文件重复拖入也应正常跳过
+    // Re-dropping regular disk files skips duplicates normally
     const normalFile = join(normalDir, 'doc.md')
     writeFileSync(normalFile, 'readme')
     expect((await dock.add([normalFile])).added).toBe(1)
@@ -59,7 +59,7 @@ describe('Dock.add deduplication', () => {
     expect(dock.items).toHaveLength(3)
   })
 
-  it('支持暂存文件夹作为快捷引用且不复制目录内容，失效后标记为 unavailable', async () => {
+  it('supports staging folder shortcuts without copying contents and marks unavailable after deletion', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const tempDir = makeTempDir('pocket-isle-temp-')
     const folder = join(tempDir, 'project-notes')
@@ -74,11 +74,11 @@ describe('Dock.add deduplication', () => {
     expect(dock.items[0].ext).toBe('dir')
     expect(dock.items[0].isCopy).toBe(false)
 
-    // 同一文件夹重复拖入跳过
+    // Duplicate folder drops are skipped
     const second = await dock.add([folder])
     expect(second.skipped).toBe(1)
 
-    // 原文件夹删除后 listWithStatus() 返回 available: false
+    // Once source folder disappears, listWithStatus() reports available: false
     rmSync(folder, { recursive: true, force: true })
     const listed = await dock.listWithStatus()
     expect(listed[0].available).toBe(false)
@@ -86,7 +86,7 @@ describe('Dock.add deduplication', () => {
 })
 
 describe('Dock concurrency, quota & short-time undo', () => {
-  it('并发导入同一临时文件时严格去重，仅保留一条记录与一份副本', async () => {
+  it('strictly deduplicates concurrent imports of the same temp file into one entry and one copy', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const tempDir = makeTempDir('pocket-isle-temp-')
     const store = new Store(dataDir)
@@ -101,7 +101,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect(dock.items).toHaveLength(1)
   })
 
-  it('并发写入剪贴板副本不会突破 copyLimitMB 配额上限', async () => {
+  it('prevents concurrent clipboard writes from exceeding copyLimitMB quota', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const store = new Store(dataDir)
     store.data.settings.copyLimitMB = 64
@@ -121,7 +121,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect(dock.copyUsage()).toBeLessThanOrEqual(64 * 1024 * 1024)
   })
 
-  it('移除剪贴板副本后支持短时撤销恢复原文件，退出清理或空间让渡后才删除磁盘副本', async () => {
+  it('retains removed clipboard copy during undo window and deletes only on purge or space reclamation', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const store = new Store(dataDir)
     store.data.settings.copyLimitMB = 64
@@ -136,7 +136,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     await dock.remove([item.id])
     expect(dock.items).toHaveLength(0)
     expect(dock.hasActiveUndo()).toBe(true)
-    // 撤销期内磁盘上的唯一副本仍保留
+    // Disk copy remains intact during the undo grace window
     expect(existsSync(item.path)).toBe(true)
 
     const undoRes = await dock.undoRemove()
@@ -146,7 +146,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect(dock.items[0].id).toBe(item.id)
     expect(existsSync(item.path)).toBe(true)
 
-    // 退出前清理会把待删缓冲区的物理副本清掉
+    // Exiting / flushing pending deletes cleans physical copies in undo buffer
     await dock.clear()
     expect(dock.items).toHaveLength(0)
     dock.flushPendingDeletesSync()
@@ -154,7 +154,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect((await dock.undoRemove()).ok).toBe(false)
   })
 
-  it('当新写入副本需要空间时自动释放撤销缓冲区的磁盘占用', async () => {
+  it('evicts undo buffer copies automatically when space is needed for new writes', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const store = new Store(dataDir)
     store.data.settings.copyLimitMB = 64
@@ -165,7 +165,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     await dock.clear()
     expect(existsSync(oldCopyPath)).toBe(true)
 
-    // 再写入 35 MiB 副本（active 0 + 35 <= 64，但与 undo 40 之和 > 64），应释放旧撤销副本并允许写入
+    // Writing 35 MiB (active 0 + 35 <= 64, but + 40 undo > 64) evicts the old undo copy
     const res = await dock.addBufferItem(
       'big2.bin',
       Buffer.alloc(35 * 1024 * 1024, 2),
@@ -176,7 +176,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect(dock.hasActiveUndo()).toBe(false)
   })
 
-  it('删除副本失败时记录待清理墓碑并在用量中保留占位；释放后重试可清理并归零用量；默认不生成 drop-log.txt', async () => {
+  it('records tombstones on failed copy deletion, cleans on retry, and omits drop-log.txt by default', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const tempDir = makeTempDir('pocket-isle-temp-')
     const copiesRoot = join(dataDir, 'dock-copies')
@@ -199,13 +199,12 @@ describe('Dock concurrency, quota & short-time undo', () => {
     const copyDir = dirname(dock.items[0].path)
     await dock.clear()
     dock.flushPendingDeletesSync()
-    // 第一次在 removeDir 被锁住（或 flushPendingDeletesSync 无法删时）：测试 retryPendingDeletes 路径
-    // 重新添加并用第二个条目触发 purgeUndoBatch 失败
+    // First attempt while removeDir is locked: prepare purgeUndoBatch failure via second item
     await dock.add([f])
     const lockedPath = dock.items[0].path
     const lockedDir = dirname(lockedPath)
     await dock.remove([dock.items[0].id])
-    // 插入另一项后再 remove 触发 purgeUndoBatch -> 调用 mocked removeDir（抛错）
+    // Insert another item and remove to force purging previous batch into mocked throwing removeDir
     const f2 = join(tempDir, 'temp2.bin')
     writeFileSync(f2, Buffer.from('small'))
     await dock.add([f2])
@@ -215,7 +214,7 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect(store.data.pendingDeletes).toContain(lockedDir)
     expect(dock.copyUsage()).toBe(1024 * 1024)
 
-    // 模拟解锁并调用 reconcileCopies，同时放一个孤儿目录与旧 drop-log.txt 验证启动清理
+    // Unlock and call reconcileCopies along with an orphan dir and legacy drop-log.txt to test startup sweep
     blockDelete = false
     const orphanDir = join(copiesRoot, 'orphan-dir-123')
     mkdirSync(orphanDir, { recursive: true })

@@ -49,7 +49,7 @@ export function playFocusChime(): void {
     })
     window.setTimeout(() => void ctx.close().catch(() => {}), 1400)
   } catch {
-    /* 无可用音频设备时静默 */
+    /* Silent no-op when audio output is unavailable */
   }
 }
 

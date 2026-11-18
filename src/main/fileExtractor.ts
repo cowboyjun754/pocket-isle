@@ -68,7 +68,7 @@ export function decodeTextBuffer(buf: Buffer, opts?: { trim?: boolean }): string
   return shouldTrim ? text.trim() : text
 }
 
-/** 安全读取纯文本文件前置内容（最多 maxBytes 字节），默认保留缩进与末尾换行供预览或复制 */
+/** Safely reads up to maxBytes of plain text files, preserving indentation and newlines by default for preview/copy. */
 export async function readTextFilePreview(
   filePath: string,
   maxBytes = 64 * 1024,
@@ -223,8 +223,8 @@ function decodeZipPayload(slice: Buffer, method: number, remainingBudget: number
 }
 
 /**
- * 轻量扫描 ZIP 条目并解压匹配的文件（支持 Central Directory / Data Descriptor 与顺序扫描回退），
- * 限制单条目与整份 ZIP 累计解压预算防止 Zip Bomb。
+ * Lightweight ZIP entry extractor supporting Central Directory / Data Descriptor mode and sequential header fallback,
+ * enforcing per-entry and cumulative decompression budgets against zip bombs.
  */
 export function readZipEntries(
   zip: Buffer,
@@ -417,8 +417,8 @@ export interface PdfExtractionResult {
 }
 
 /**
- * 提取 PDF 正文：仅解析内容流中的 Tj / TJ 文本操作符与 ToUnicode CMap，
- * 不再抓取 /Info 元数据括号字面量，防止纯扫描图片型 PDF 误判为已读全文。
+ * Extracts PDF text strictly from Tj/TJ content-stream operators and ToUnicode CMaps;
+ * avoids /Info metadata literals so image-only scanned PDFs are honestly flagged rather than treated as read.
  */
 export function extractPdfTextDetailed(buf: Buffer): PdfExtractionResult {
   const scanLimit = Math.min(buf.length, MAX_PDF_SCAN_BYTES)
@@ -511,7 +511,7 @@ export function extractPdfTextDetailed(buf: Buffer): PdfExtractionResult {
     .trim()
 
   if (streamText.length < 16) {
-    // 仅在未收集到流文本时，尝试提取明文 BT ... ET 排版块内的文本操作符
+    // Fall back to plain BT ... ET blocks only when no compressed stream text was extracted
     const rawLatin = scanBuf.subarray(0, Math.min(scanBuf.length, 512 * 1024)).toString('latin1')
     const btBlocks = rawLatin.match(/\bBT\b[\s\S]{1,16000}?\bET\b/g) ?? []
     const btCollected: string[] = []
@@ -537,7 +537,7 @@ export function extractPdfText(buf: Buffer): string {
 }
 
 /**
- * 纯文本 / Office / PDF / 文件夹 提取核心（无 Electron 依赖，可在 Worker 线程内独立运行）
+ * Pure-Node text / Office / PDF / folder snippet extractor (zero Electron dependency; safe for worker threads).
  */
 export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promise<ExtractedDoc> {
   const base: ExtractedDoc = {

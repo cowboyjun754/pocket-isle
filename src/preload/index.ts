@@ -47,19 +47,19 @@ const api: IsleApi = {
   setPanelPinned: (pinned) => ipcRenderer.invoke('panel:setPinned', pinned),
   hideIsland: () => ipcRenderer.send('island:hide'),
 
-  // 自由桌搭与小岛记忆
+  // Island decorations & persistent memory
   getDecorations: () => ipcRenderer.invoke('decor:get'),
   setDecorations: (next) => ipcRenderer.invoke('decor:set', next),
   getIslandMemory: () => ipcRenderer.invoke('island:getMemory'),
   setIslandMemory: (patch) => ipcRenderer.invoke('island:setMemory', patch),
 
-  // 专注计时与目标拆解
+  // Focus timer & goal breakdown
   getFocus: () => ipcRenderer.invoke('focus:get'),
   focusControl: (action, durationMinutes) =>
     ipcRenderer.invoke('focus:control', action, durationMinutes),
   updateFocusPlan: (goal, steps) => ipcRenderer.invoke('focus:updatePlan', goal, steps),
 
-  // AI 水獭搭档与设置
+  // AI companion & settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   getAppEnv: () => ipcRenderer.invoke('app:getEnv'),
@@ -76,7 +76,7 @@ const api: IsleApi = {
   aiRecommendDecor: (moodPrompt, taskId) => ipcRenderer.invoke('ai:recommendDecor', moodPrompt, taskId),
   cancelAi: () => ipcRenderer.send('ai:cancel'),
 
-  // 事件订阅
+  // Event subscriptions
   onDockChanged: (cb) => listen('dock:changed', cb),
   onDockUndoChanged: (cb) => listen<[DockUndoState | null]>('dock:undoChanged', cb),
   onAiProgress: (cb) => listen<[AiProgressPayload]>('ai:progress', cb),

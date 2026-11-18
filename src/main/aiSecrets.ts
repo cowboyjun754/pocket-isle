@@ -71,9 +71,9 @@ export function normalizeAiOrigin(rawBaseUrl: string): string | null {
 }
 
 /**
- * 按协议 + 主机 + 端口分源管理 AI 凭据：
- * - 使用 Electron safeStorage 加密后存入 store.data.aiSecrets（绝不写入明文）；
- * - 切换服务商或本地模型时天然隔离，不会将 A 端点的密钥发给 B 端点。
+ * Isolates AI credentials by protocol + host + port origin:
+ * - Encrypts keys via Electron safeStorage into store.data.aiSecrets (never stores plaintext on disk);
+ * - Switching providers or local loopback models naturally prevents leaking credentials across origins.
  */
 export class AiCredentialStore {
   private memoryOnly = new Map<string, string>()
@@ -127,7 +127,7 @@ export class AiCredentialStore {
       })
       return { origin, persisted: true }
     }
-    // 系统加密不可用时仅保存在当前进程内存，不将明文写入磁盘
+    // When OS keychain encryption is unavailable, hold secrets in memory only (never write plaintext to disk)
     this.memoryOnly.set(origin, clean)
     return { origin, persisted: false }
   }

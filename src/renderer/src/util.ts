@@ -56,7 +56,7 @@ export function describeResult(r: AddResult): string | null {
   return parts.length ? parts.join('，') : null
 }
 
-/** 根据当前勾选与搜索过滤状态，确定码头「AI 整理」真正发送的文件范围 */
+/** Resolves the exact Dock "AI Organize" item scope based on checked selection and active search filter. */
 export function resolveOrganizeScope(params: {
   items: DockItem[]
   filteredItems: DockItem[]
@@ -88,12 +88,12 @@ export function resolveOrganizeScope(params: {
   }
 }
 
-/** 专注目标拆解严格仅附带用户显式勾选的文件（零选中时不静默外发最近文件） */
+/** Includes only explicitly checked files for focus breakdown (never silently attaches recent files). */
 export function resolveBreakdownDocIds(focusDocIds: Set<string>): string[] {
   return [...focusDocIds]
 }
 
-/** 格式化毫秒倒计时为 `MM:SS`（向上取整到秒，负值归零） */
+/** Formats a millisecond countdown as `MM:SS` (ceil to whole seconds, negative values clamped to 00:00). */
 export function formatDurationMmSs(ms: number): string {
   const totalSec = Math.max(0, Math.ceil(ms / 1000))
   const m = Math.floor(totalSec / 60)

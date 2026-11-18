@@ -484,7 +484,7 @@ export function DockTab(props: DockTabProps): JSX.Element {
                       </div>
                     </div>
 
-                    {/* AI 文件速览展开卡 */}
+                    {/* Expandable AI file summary card */}
                     {showSummary && it.summary && (
                       <div className="summary-card">
                         <div className="summary-head">

@@ -57,8 +57,8 @@ function ensureWorker(): Worker {
 }
 
 /**
- * 在独立 Worker 线程执行文件读取与 Office/PDF 同步解压，避免卡顿小岛拖动与计时器；
- * 收到取消信号时立即终止工作线程并中断后续队列。
+ * Runs file reading and Office/PDF decompression on a background worker thread so UI dragging and timers never stall.
+ * Terminates the worker immediately on AbortSignal cancellation.
  */
 export function extractTextInWorker(
   item: DockItem,

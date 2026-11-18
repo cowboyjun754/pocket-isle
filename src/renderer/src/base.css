@@ -30,7 +30,7 @@ body,
   user-select: none;
 }
 
-/* 全局重置按钮样式，彻底杜绝浏览器默认的 Windows 95 凸起灰框 */
+/* Reset native button styling to eliminate legacy OS raised bevel borders */
 button {
   appearance: none;
   -webkit-appearance: none;
@@ -68,7 +68,7 @@ input:focus {
   box-shadow: 0 0 0 2px rgba(168, 196, 154, 0.35);
 }
 
-/* 暖纸手绘风细滚动条 */
+/* Thin watercolor warm-paper custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

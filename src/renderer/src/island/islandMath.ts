@@ -78,7 +78,7 @@ export const PAT_REACTIONS: Array<{ action: OtterAction; anim: string; bubble: s
   { action: 'wave', anim: 'react-wave', bubble: '点草地或建筑我都会过去玩哦~' }
 ]
 
-/** 将视口指针坐标转换为内部 300x210 舞台逻辑坐标（含左侧镜像翻转补偿）。 */
+/** Maps viewport pointer coordinates to internal 320x240 logical stage coordinates (compensating left-edge flip). */
 export function toStageCoordsWith(
   clientX: number,
   clientY: number,
@@ -92,7 +92,7 @@ export function toStageCoordsWith(
   return { x: localX, y: clientY }
 }
 
-/** 限制舞台内拖拽包裹时的锚点位置，防止包裹拖出可视边缘外无法找回。 */
+/** Clamps dragged parcel anchors within interactive stage bounds so parcels cannot be lost off-edge. */
 export function clampParcelStageAnchor(rawX: number, rawY: number): { x: number; y: number } {
   return {
     x: Math.min(Math.max(rawX, 18), STAGE.w - 18),

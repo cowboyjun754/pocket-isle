@@ -56,12 +56,12 @@ function buildSimpleZip(entries: Array<{ name: string; content: string }>): Buff
 }
 
 describe('parseJsonLoose', () => {
-  it('解析带 markdown 代码块的 JSON', () => {
+  it('parses JSON wrapped inside markdown fenced blocks', () => {
     const raw = '```json\n{"reply": "你好呀~"}\n```'
     expect(parseJsonLoose<{ reply: string }>(raw).reply).toBe('你好呀~')
   })
 
-  it('解析前后夹杂说明文字的 JSON', () => {
+  it('parses JSON surrounded by explanatory prose', () => {
     const raw = '好的，这是整理结果：\n{"otterBubble":"分好啦","items":[]}\n希望对你有帮助'
     const res = parseJsonLoose<{ otterBubble: string; items: unknown[] }>(raw)
     expect(res.otterBubble).toBe('分好啦')
@@ -70,13 +70,13 @@ describe('parseJsonLoose', () => {
 })
 
 describe('readZipEntryText (Central Directory + Data Descriptor support)', () => {
-  it('即使 Local Header 中 compSize=0（Data Descriptor 模式），仍能通过 Central Directory 正确读取', () => {
+  it('reads entries via Central Directory even when Local Header compSize=0 (Data Descriptor mode)', () => {
     const entry1Name = Buffer.from('[Content_Types].xml', 'utf8')
     const entry1Data = deflateRawSync(Buffer.from('<Types/>', 'utf8'))
     const entry2Name = Buffer.from('word/document.xml', 'utf8')
     const entry2Data = deflateRawSync(Buffer.from('<w:p>停靠岛测试正文</w:p>', 'utf8'))
 
-    // 构造带 Data Descriptor（Local Header 里 compSize 填 0）的两个条目
+    // Construct two entries with Data Descriptor flag (compSize=0 in Local Header)
     const makeLocal = (name: Buffer, data: Buffer): Buffer => {
       const h = Buffer.alloc(30)
       h.writeUInt32LE(0x04034b50, 0)
@@ -120,7 +120,7 @@ describe('readZipEntryText (Central Directory + Data Descriptor support)', () =>
 })
 
 describe('decodeTextBuffer & mapOrganizeResponse', () => {
-  it('正确解码 UTF-8 BOM 与 UTF-16LE BOM 文本', () => {
+  it('decodes UTF-8 BOM and UTF-16LE BOM text buffers accurately', () => {
     const utf8Bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('停靠岛日记', 'utf8')])
     expect(decodeTextBuffer(utf8Bom)).toBe('停靠岛日记')
 
@@ -131,7 +131,7 @@ describe('decodeTextBuffer & mapOrganizeResponse', () => {
     expect(decodeTextBuffer(utf16Bom)).toBe('Windows 记事本内容')
   })
 
-  it('默认保留前导缩进、空行与末尾换行，避免复制代码时失真', async () => {
+  it('preserves leading indentation, blank lines, and trailing newlines by default', async () => {
     const pyCode = '    def hello():\n\n        return "world"\n'
     expect(decodeTextBuffer(Buffer.from(pyCode, 'utf8'))).toBe(pyCode)
     expect(decodeTextBuffer(Buffer.from(pyCode, 'utf8'), { trim: true })).toBe(
@@ -149,7 +149,7 @@ describe('decodeTextBuffer & mapOrganizeResponse', () => {
     }
   })
 
-  it('AI 返回未匹配任何文件 ID 时应返回 ok:false，避免误报成功', () => {
+  it('returns ok:false when AI response matches zero item IDs instead of reporting false success', () => {
     const docs: ExtractedDoc[] = [
       { id: 'doc-1', name: 'plan.md', ext: 'md', size: 120, snippet: 'hello', readStatus: 'full' }
     ]
@@ -167,7 +167,7 @@ describe('decodeTextBuffer & mapOrganizeResponse', () => {
 })
 
 describe('extractPdfText (FlateDecode + ToUnicode CMap)', () => {
-  it('能解压 FlateDecode PDF 内容流并提取英文 Tj 文本', () => {
+  it('inflates FlateDecode PDF streams and extracts English Tj text', () => {
     const comp = deflateSync(Buffer.from('BT (Hello Pocket Isle Desktop Dock!) Tj ET', 'latin1'))
     const pdf = Buffer.concat([
       Buffer.from('%PDF-1.4\n1 0 obj\n<< /Filter /FlateDecode >>\nstream\n', 'latin1'),
@@ -177,7 +177,7 @@ describe('extractPdfText (FlateDecode + ToUnicode CMap)', () => {
     expect(extractPdfText(pdf)).toContain('Hello Pocket Isle Desktop Dock!')
   })
 
-  it('能解析 ToUnicode CMap（含 bfchar 与数组 bfrange）并还原 FlateDecode 中文 PDF', () => {
+  it('parses ToUnicode CMap (bfchar and array bfrange) and restores FlateDecode Chinese PDF text', () => {
     const cmap = deflateSync(
       Buffer.from(
         'begincmap\n2 beginbfchar\n<0001> <505C>\n<0002> <9760>\nendbfchar\n1 beginbfrange\n<0003> <0004> [<5C9B> <4E36>]\nendbfrange\nendcmap',
@@ -201,7 +201,7 @@ describe('extractPdfText (FlateDecode + ToUnicode CMap)', () => {
 })
 
 describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
-  it('能提取 .pptx 每页幻灯片文字以及 .xlsx 表头与行数据', async () => {
+  it('extracts .pptx slide text, .xlsx headers/rows, and compressed Vision images', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-test-'))
     try {
       const pptxPath = join(dir, 'deck.pptx')
@@ -284,14 +284,14 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     }
   })
 
-  it('本地模型地址 (Ollama / LM Studio，含省略协议) 允许不填 API Key，云端接口仍校验 Key', () => {
+  it('allows omitting API key for local loopback models (Ollama / LM Studio) while requiring keys remotely', () => {
     expect(requiresApiKey('http://localhost:11434/v1/chat/completions')).toBe(false)
     expect(requiresApiKey('localhost:11434/v1')).toBe(false)
     expect(requiresApiKey('http://127.0.0.1:1234/v1')).toBe(false)
     expect(requiresApiKey('https://api.deepseek.com/v1')).toBe(true)
   })
 
-  it('readTextFilePreview 与 extractFileSnippet 支持快速截断预览及文件夹清单识别', async () => {
+  it('supports truncated text preview and directory listing extraction', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-preview-'))
     try {
       const txtPath = join(dir, 'notes.md')
@@ -323,7 +323,7 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     }
   })
 
-  it('41 行 Excel 表格标为 partial 且附带仅读取前 40 行说明', async () => {
+  it('marks 41-row Excel workbooks as partial with a 40-row preview notice', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-xlsx41-'))
     try {
       const xlsxPath = join(dir, 'tasks.xlsx')
@@ -369,7 +369,7 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     }
   })
 
-  it('纯扫描件 PDF 不把元数据括号当作正文，标记为 meta-only 并附带原因', async () => {
+  it('marks scanned image-only PDFs as meta-only without mistaking metadata parentheses for text', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-scanpdf-'))
     try {
       const pdfPath = join(dir, 'scanned.pdf')
@@ -400,7 +400,7 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     }
   })
 
-  it('6 张图片联合速览时，仅编码并附带前 4 张图片，第 5～6 张在请求体与回执中均标为未附图', async () => {
+  it('encodes only first 4 images during 6-image joint summary and marks images 5-6 unattached in payload & receipts', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-6imgs-'))
     try {
       const items = Array.from({ length: 6 }, (_, i) => {
@@ -477,7 +477,7 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     }
   })
 
-  it('批量提取遵守总字节预算并响应取消信号；模型输出畸形字段时安全清洗', async () => {
+  it('enforces total input byte budget, respects AbortSignal, and sanitizes malformed model fields', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-batch-'))
     try {
       const f1 = join(dir, 'a.txt')
@@ -526,7 +526,7 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
       }
       expect(threwAbort).toBe(true)
 
-      // 畸形模型响应：brief / bullets / attention 为对象时不会透传对象给 React
+      // Malformed model output: object/array values for brief/bullets/attention never leak raw objects to React
       const badMapped = mapOrganizeResponse([budgetDocs[0]], {
         otterBubble: { nested: true } as unknown,
         items: [
@@ -549,7 +549,7 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
     }
   })
 
-  it('专注拆解传入空资料数组时，请求体 relatedFiles 严格为空', async () => {
+  it('keeps relatedFiles empty in focus breakdown requests when no documents are passed', async () => {
     const fetchSpy = vi.fn(async () => ({
       ok: true,
       json: async () => ({

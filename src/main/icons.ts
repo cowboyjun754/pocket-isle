@@ -6,7 +6,7 @@ import parcelScrollAsset from '../renderer/src/assets/parcel-scroll.png?asset'
 
 type RGB = [number, number, number]
 
-/** 生成微型水彩停靠岛托盘图标（BGRA，预乘 alpha），在 16x16 托盘栏中辨识度高 */
+/** Renders a miniature watercolor Pocket Isle tray icon (premultiplied BGRA) crisp at 16x16. */
 function blendPixel(buf: Buffer, size: number, x: number, y: number, col: RGB, alpha: number): void {
   if (x < 0 || y < 0 || x >= size || y >= size || alpha <= 0) return
   const a = Math.min(1, Math.max(0, alpha))
@@ -28,27 +28,27 @@ function islandTrayBitmap(size = 32): Buffer {
       const edge = Math.min(1, Math.max(0, R - d + 0.6))
       if (edge <= 0) continue
 
-      let col: RGB = [148, 194, 219] // 海洋蓝
-      if (d > R - 1.5) col = [96, 74, 52] // 暖棕轮廓
-      else if (d > R - 3.3) col = [251, 242, 220] // 奶油白浪花
+      let col: RGB = [148, 194, 219] // ocean blue
+      if (d > R - 1.5) col = [96, 74, 52] // warm brown outline
+      else if (d > R - 3.3) col = [251, 242, 220] // cream foam ring
 
-      // 暖沙岸底弧
+      // Warm sand shore arc
       const sandD = ((x - c) / (size * 0.32)) ** 2 + ((y - (c + 1.5)) / (size * 0.26)) ** 2
       if (sandD <= 1 && d <= R - 3.2) col = [238, 212, 170]
 
-      // 嫩绿草地小山坡
+      // Tender green turf hill
       const grassD = ((x - c) / (size * 0.29)) ** 2 + ((y - (c - 0.8)) / (size * 0.21)) ** 2
       if (grassD <= 1 && d <= R - 3.2) col = y < c - 1 ? [168, 200, 142] : [148, 184, 122]
 
       blendPixel(buf, size, x, y, col, edge)
 
-      // 左侧小小木栈桥
+      // Left wooden pier tip
       if (x >= 5 && x <= 12 && y >= 17 && y <= 20) {
         const isRim = y === 17 || y === 20 || x === 5
         blendPixel(buf, size, x, y, isRim ? [104, 78, 52] : [220, 189, 144], 0.95)
       }
 
-      // 山坡右上小红屋顶
+      // Cozy red cabin roof on upper right hill
       if (x >= 17 && x <= 22 && y >= 10 && y <= 14) {
         const roof = y <= 12 && Math.abs(x - 19.5) <= y - 9.2
         if (roof) blendPixel(buf, size, x, y, [212, 126, 88], 0.98)
@@ -75,7 +75,7 @@ const PARCEL_ICON_SPECS: Record<ParcelKind, { path: string; width: number; heigh
 
 const parcelDragIconCache = new Map<ParcelKind, NativeImage>()
 
-/** 返回手绘水彩包裹图标用于原生拖拽，避免弹出多余的占位圆圈 */
+/** Returns a hand-painted parcel sprite icon for native OS startDrag feedback. */
 export function makeDragIcon(kind: ParcelKind = 'envelope'): NativeImage {
   const cached = parcelDragIconCache.get(kind)
   if (cached) return cached

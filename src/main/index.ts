@@ -132,7 +132,7 @@ const EXECUTABLE_EXTS = new Set([
 ])
 const SHORTCUT = 'Control+Alt+Space'
 
-// ---------- 通用 ----------
+// ---------- General Helpers ----------
 
 function webPrefs(): Electron.WebPreferences {
   return {
@@ -164,7 +164,7 @@ async function readClipboardImagePng(): Promise<Buffer | null> {
       if (!img.isEmpty()) return img.toPNG()
     }
   } catch {
-    /* 剪贴板为空或当前格式不支持图片读取时回退文本检测 */
+    /* Fall back to text clipboard detection when image read is empty or unsupported */
   }
   return null
 }
@@ -187,9 +187,9 @@ function publicSettings(): Settings {
 }
 
 /**
- * 触发水獭情境回应（遵守 v3 约束）：
- * 1. 贴边收起（docked）时不因 AI 回复强行自动展开；
- * 2. 专注正在进行中（phase==='focus' && running）时保持安静，不冒打扰气泡。
+ * Emits contextual otter reactions while enforcing UX constraints:
+ * 1. Never force-expands the island when docked;
+ * 2. Keeps the otter quiet without bubble popups while focus timer is actively running.
  */
 function emitOtterReaction(react: OtterReactionPayload, allowDuringFocus = false): void {
   const f = store.data.focus
@@ -257,7 +257,7 @@ function setMode(next: ExpandMode): void {
   }
 }
 
-// ---------- 小岛窗口与左右贴边计算 ----------
+// ---------- Island Window & Left/Right Edge Positioning ----------
 
 function defaultPos(side: DockSide = 'right'): { x: number; y: number } {
   const wa = screen.getPrimaryDisplay().workArea
@@ -464,7 +464,7 @@ function snapAfterMove(origin: { winX: number; startSide: DockSide } | null): vo
   if (panel?.isVisible()) positionPanel()
 }
 
-// ---------- 操作面板 ----------
+// ---------- Operations Panel ----------
 
 function createPanel(): void {
   panel = new BrowserWindow({
@@ -546,7 +546,7 @@ function positionPanelAt(
   positioningPanel = true
   ignorePanelMoveUntil = Date.now() + 140
   try {
-    // 拖拽等高频位移期间只调用 setPosition，避免重复 setBounds 触发透明窗口尺寸重算与 DWM 重绘卡顿
+    // Use setPosition during high-frequency moves to avoid transparent window DWM resize stutter
     if (lastPanelSize && lastPanelSize.w === PANEL.w && lastPanelSize.h === h) {
       panel.setPosition(rx, ry)
     } else {
@@ -590,7 +590,7 @@ function togglePanel(): void {
   showPanel()
 }
 
-// ---------- 托盘 ----------
+// ---------- System Tray ----------
 
 function rebuildTrayMenu(): void {
   if (!tray) return
@@ -810,7 +810,7 @@ function registerIpc(): void {
       const img = await nativeImage.createThumbnailFromPath(it.path, { width: s, height: s })
       if (!img.isEmpty()) url = img.toDataURL()
     } catch {
-      /* 没有缩略图时用系统图标 */
+      /* Fall back to OS file icon when thumbnail generation fails */
     }
     if (!url) {
       try {
@@ -859,7 +859,7 @@ function registerIpc(): void {
           return { ok: true, message: `已复制图片到剪贴板：${it.name}` }
         }
       } catch {
-        /* 图片读取失败时回退复制路径 */
+        /* Fall back to path copy when image read/write fails */
       }
     }
     if (!it.isDir && TEXT_EXTS.has(it.ext)) {
@@ -871,7 +871,7 @@ function registerIpc(): void {
           message: truncated ? `已复制前 256 KB 文本：${it.name}` : `已复制文本内容：${it.name}`
         }
       } catch {
-        /* 文本读取失败时回退复制路径 */
+        /* Fall back to path copy when text read fails */
       }
     }
     try {
@@ -884,7 +884,7 @@ function registerIpc(): void {
 
   handleTrusted('dock:copyUsage', () => ({ used: dock.copyUsage(), limit: dock.copyLimit() }))
 
-  // ---------- 自由桌搭与小岛记忆 ----------
+  // ---------- Island Decorations & Persistent Memory ----------
   handleTrusted('decor:get', () => store.data.decorations)
   handleTrusted('decor:set', (_e, next: Partial<DecorationState>) => {
     let ambienceChanged = false
@@ -932,7 +932,7 @@ function registerIpc(): void {
     return store.data.islandMemory
   })
 
-  // ---------- 专注计时 ----------
+  // ---------- Focus Timer ----------
   handleTrusted('focus:get', () => focusCtrl.state)
   handleTrusted(
     'focus:control',
@@ -949,7 +949,7 @@ function registerIpc(): void {
     )
   )
 
-  // ---------- 设置与 AI 水獭搭档 ----------
+  // ---------- Settings & AI Assistant ----------
   handleTrusted('settings:get', () => publicSettings())
   handleTrusted('settings:update', (_e, rawPatch: SettingsPatch): Settings => {
     const res = applySettingsPatch(store.data.settings, rawPatch, app.isPackaged)
@@ -1312,8 +1312,8 @@ function registerIpc(): void {
       if (store.data.settings.alwaysOnTop) {
         island.setAlwaysOnTop(true, 'floating')
       }
-      // 拖出前关闭 forward 鼠标钩子，并按光标位置同步纯 WS_EX_TRANSPARENT 穿透状态：
-      // 光标仍在岛/栈桥内时不穿透以便原地取消放回；移出岛/栈桥（含透明悬空区）后立即穿透，拖回岛上再恢复接住放回
+      // Disable forward mouse hook before outbound OS drag and toggle pure WS_EX_TRANSPARENT pass-through:
+      // stays clickable over island/pier for in-place cancel, switches transparent outside so external apps receive drops
       syncIslandMouseIgnore(true, false)
       dragPollTimer = setInterval(() => {
         if (!dragOutActive || !island || island.isDestroyed()) return
@@ -1417,7 +1417,7 @@ function registerIpc(): void {
   })
 }
 
-// ---------- 生命周期 ----------
+// ---------- App Lifecycle ----------
 
 app.on('second-instance', (_event, commandLine) => {
   if (commandLine.includes('--quit')) {
@@ -1546,7 +1546,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  /* 托盘应用：不随窗口关闭退出 */
+  /* Tray app stays alive when all windows close */
 })
 
 app.on('before-quit', () => {

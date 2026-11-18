@@ -100,7 +100,7 @@ function normalizeSprouts(raw: unknown): IslandSprout[] {
   return valid
 }
 
-/** 简单 JSON 持久化：先写临时文件再改名替换，写盘失败保留脏标记并自动重试 */
+/** Atomic JSON persistence: writes to temp file before rename, preserves dirty flag and retries on failure. */
 export class Store {
   data: Data
   private file: string
@@ -222,7 +222,7 @@ export class Store {
             cabinWarm:
               typeof raw.islandMemory?.cabinWarm === 'boolean' ? raw.islandMemory.cabinWarm : null
           },
-          // 重启应用时若有未走完的计时，以暂停状态恢复，不跨关机乱累计时长
+          // Restore unfinished focus/rest timer as paused on restart rather than accumulating offline elapsed time
           focus: {
             ...DEFAULT_FOCUS,
             ...savedFocus,

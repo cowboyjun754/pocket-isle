@@ -1,4 +1,4 @@
-/** 生成剪贴板截图/文本的安全文件名（保留可读前缀与时间戳，不含 Windows 非法路径字符） */
+/** Builds a sanitized Windows-safe filename for clipboard screenshots/text snippets with timestamp. */
 export function buildClipboardFilename(
   kind: 'image' | 'text',
   textPreview?: string,

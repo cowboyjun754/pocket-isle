@@ -1,4 +1,4 @@
-/** 主进程、preload、渲染进程共用的类型（v3：自由桌搭 + 减压互动 + 专注计时 + AI 水獭搭档） */
+/** Shared domain models & IPC contracts across main, preload, and renderer processes (v3). */
 
 import type { DockSide, ExpandMode } from './shape'
 
@@ -18,26 +18,26 @@ export interface FileSummary {
 
 export interface DockItem {
   id: string
-  /** 显示名称（原文件名） */
+  /** Display name (original filename) */
   name: string
-  /** 小写扩展名，不含点 */
+  /** Lowercase extension without leading dot */
   ext: string
-  /** 实际使用的路径：只存路径的条目 = 原路径；副本条目 = 应用目录里的副本 */
+  /** Active path: referenced path for regular entries, or managed copy path for copies */
   path: string
-  /** 拖入时的原始路径 */
+  /** Original path captured at drop time */
   sourcePath: string
-  /** 是否为自动复制的副本 */
+  /** Whether stored as an app-managed copy */
   isCopy: boolean
-  /** 是否为文件夹引用 */
+  /** Whether the entry represents a folder shortcut reference */
   isDir?: boolean
   size: number
   mtimeMs: number
   addedAt: number
-  /** 应用内分组名（仅调整应用内组织，不改磁盘原文件） */
+  /** In-app group label (virtual organization only; original disk file is never moved) */
   group?: string
-  /** AI 文件速览结果 */
+  /** AI-generated summary payload */
   summary?: FileSummary
-  /** 运行时检查结果，不持久化 */
+  /** Runtime availability status (not persisted) */
   available?: boolean
 }
 
@@ -86,9 +86,9 @@ export interface AiConfigInput {
   baseUrl: string
   model: string
   enableVision?: boolean
-  /** 留空且 clearApiKey!==true 时沿用当前源已存密钥；非空则更新密钥 */
+  /** When blank and clearApiKey !== true, keeps the saved key for this origin; otherwise updates it */
   apiKey?: string
-  /** 显式清除当前源已保存的密钥 */
+  /** Explicitly clears the saved credential for the current origin */
   clearApiKey?: boolean
 }
 
@@ -117,13 +117,13 @@ export interface UndoResult {
 export interface Settings {
   alwaysOnTop: boolean
   openAtLogin: boolean
-  /** 副本总容量上限（MB） */
+  /** Copy storage quota limit in MB */
   copyLimitMB: number
-  /** 默认专注时长（分钟，1..180） */
+  /** Default focus duration in minutes (1..180) */
   focusMinutes?: number
-  /** 默认休息时长（分钟，1..60） */
+  /** Default rest duration in minutes (1..60) */
   restMinutes?: number
-  /** 专注/休息结束时提示音与桌面通知 */
+  /** Play sound & desktop notification on focus/rest completion */
   focusNotify?: boolean
   ai: AiConfig
 }
@@ -209,7 +209,7 @@ export interface IsleApi {
   clear(): Promise<void>
   undoRemove(token?: string): Promise<UndoResult>
   setItemGroup(ids: string[], group: string | undefined): Promise<void>
-  /** 返回空字符串表示成功，否则为错误信息 */
+  /** Returns empty string on success, or an error message otherwise */
   open(id: string): Promise<string>
   reveal(id: string): Promise<void>
   thumb(id: string, size: number): Promise<string | null>
@@ -230,13 +230,13 @@ export interface IsleApi {
   setPanelPinned(pinned: boolean): Promise<boolean>
   hideIsland(): void
 
-  // 自由桌搭与小岛记忆
+  // Island decorations & persistent memory
   getDecorations(): Promise<DecorationState>
   setDecorations(next: Partial<DecorationState>): Promise<DecorationState>
   getIslandMemory(): Promise<IslandMemory>
   setIslandMemory(patch: Partial<IslandMemory>): Promise<IslandMemory>
 
-  // 专注计时与目标拆解
+  // Focus timer & goal breakdown
   getFocus(): Promise<FocusState>
   focusControl(
     action: 'start_focus' | 'pause' | 'resume' | 'start_rest' | 'reset',
@@ -244,7 +244,7 @@ export interface IsleApi {
   ): Promise<FocusState>
   updateFocusPlan(goal: string, steps: FocusStep[]): Promise<FocusState>
 
-  // AI 水獭搭档与设置
+  // AI companion & settings
   getSettings(): Promise<Settings>
   updateSettings(patch: SettingsPatch): Promise<Settings>
   getAppEnv(): Promise<AppEnv>
@@ -267,7 +267,7 @@ export interface IsleApi {
   ): Promise<{ ok: boolean; cancelled?: boolean; message: string }>
   cancelAi(): void
 
-  // 事件订阅
+  // Event subscriptions
   onDockChanged(cb: () => void): () => void
   onDockUndoChanged(cb: (u: DockUndoState | null) => void): () => void
   onAiProgress(cb: (p: AiProgressPayload) => void): () => void

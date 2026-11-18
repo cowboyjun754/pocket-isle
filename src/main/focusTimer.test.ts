@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 describe('FocusController custom durations & completion', () => {
-  it('支持自定义专注时长（最高 180 分钟）与设置持久化时长同步', () => {
+  it('supports custom focus durations up to 180 min synced with settings', () => {
     const store = makeStore()
     const ctrl = new FocusController(
       store,
@@ -52,7 +52,7 @@ describe('FocusController custom durations & completion', () => {
     ctrl.dispose()
   })
 
-  it('倒计时结束触发 onFinished 回调并进入 focus_done / idle', () => {
+  it('fires onFinished callback on countdown completion and transitions to focus_done / idle', () => {
     vi.useFakeTimers()
     const store = makeStore()
     const finished: Array<'focus' | 'rest'> = []
@@ -77,7 +77,7 @@ describe('FocusController custom durations & completion', () => {
     ctrl.dispose()
   })
 
-  it('运行期间每 15 秒落盘一次轻量计时检查点，异常重启后回退不超过 15 秒', () => {
+  it('writes lightweight checkpoints every 15s while running so crashes lose at most 15s', () => {
     vi.useFakeTimers()
     const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-focus-ckpt-'))
     dirs.push(dir)
@@ -89,10 +89,10 @@ describe('FocusController custom durations & completion', () => {
     )
 
     ctrl.control('start_focus', 5)
-    vi.advanceTimersByTime(16 * 1000) // 触发一次 15s 检查点及 200ms 延迟落盘
+    vi.advanceTimersByTime(16 * 1000) // triggers 15s checkpoint + 200ms debounced flush
     ctrl.dispose()
 
-    // 模拟未经过正常退出/pause，直接从磁盘重新加载 data.json（以暂停状态恢复）
+    // Simulate abrupt restart reloading data.json directly (restored in paused state)
     const reloaded = new Store(dir)
     expect(reloaded.data.focus.phase).toBe('focus')
     expect(reloaded.data.focus.running).toBe(false)

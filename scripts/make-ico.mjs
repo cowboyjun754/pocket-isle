@@ -52,7 +52,7 @@ function encodeRgbaPng(size, rgba) {
   ])
 }
 
-/** 编码 Windows 标准 32bpp BITMAPINFOHEADER DIB（用于 16/32/48/64 尺寸，全系统兼容） */
+/** Encodes a Windows 32bpp BITMAPINFOHEADER DIB (used for 16/32/48/64 sizes for broad compatibility). */
 function encodeBmpDib(size, rgba) {
   const hdr = Buffer.alloc(40)
   hdr.writeUInt32LE(40, 0) // biSize
@@ -68,7 +68,7 @@ function encodeBmpDib(size, rgba) {
   const andMask = Buffer.alloc(andStride * size)
 
   for (let y = 0; y < size; y++) {
-    const srcY = size - 1 - y // BMP DIB 为自底向上存储
+    const srcY = size - 1 - y // BMP DIB rows are stored bottom-up
     for (let x = 0; x < size; x++) {
       const si = (srcY * size + x) * 4
       const di = (y * size + x) * 4
@@ -96,7 +96,7 @@ function blendRgba(buf, size, x, y, rgb, alpha) {
   buf[i + 3] = Math.min(255, Math.round(buf[i + 3] * inv + 255 * a))
 }
 
-/** 绘制比例自适应的手绘水彩小岛 RGBA 位图 */
+/** Renders a proportional watercolor-style floating island RGBA bitmap. */
 export function renderIslandIconRgba(size = 64) {
   const buf = Buffer.alloc(size * size * 4)
   const c = (size - 1) / 2
@@ -109,9 +109,9 @@ export function renderIslandIconRgba(size = 64) {
       const edge = Math.min(1, Math.max(0, r - d + 0.65 * s))
       if (edge <= 0) continue
 
-      let col = [148, 194, 219] // 海洋蓝
-      if (d > r - 1.5 * s) col = [96, 74, 52] // 暖棕轮廓
-      else if (d > r - 3.2 * s) col = [251, 242, 220] // 奶油浪花
+      let col = [148, 194, 219] // ocean blue
+      if (d > r - 1.5 * s) col = [96, 74, 52] // warm brown outline
+      else if (d > r - 3.2 * s) col = [251, 242, 220] // cream foam ring
 
       const sandD = ((x - c) / (size * 0.33)) ** 2 + ((y - (c + 1.5 * s)) / (size * 0.27)) ** 2
       if (sandD <= 1 && d <= r - 3.1 * s) col = [238, 212, 170]

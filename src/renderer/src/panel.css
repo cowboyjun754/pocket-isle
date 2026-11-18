@@ -89,7 +89,7 @@
   color: #2f4f25;
 }
 
-/* ---------- 码头工具栏与分组列表 ---------- */
+/* ---------- Dock Toolbar & Grouped List ---------- */
 
 .dock-toolbar {
   display: flex;
@@ -541,7 +541,7 @@
   font-weight: 600;
 }
 
-/* AI 文件速览卡 */
+/* AI File Summary Card */
 .summary-card {
   margin: 0 4px 4px 20px;
   padding: 8px 11px;
@@ -581,7 +581,7 @@
   font-size: 11px;
 }
 
-/* ---------- 专注计时与目标拆解 ---------- */
+/* ---------- Focus Timer & Goal Breakdown ---------- */
 
 .focus-timer-card {
   padding: 12px;
@@ -743,7 +743,7 @@
   color: var(--ink-2);
 }
 
-/* ---------- 自由桌搭 ---------- */
+/* ---------- Island Decor & Ambience ---------- */
 
 .preset-btns {
   display: flex;
@@ -832,7 +832,7 @@
   gap: 2px;
 }
 
-/* ---------- 设置 ---------- */
+/* ---------- Settings ---------- */
 
 .toggle-row {
   display: flex;

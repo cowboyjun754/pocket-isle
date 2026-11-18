@@ -18,7 +18,7 @@ const BASE: Settings = {
 }
 
 describe('applySettingsPatch', () => {
-  it('将 copyLimitMB 限制在合法区间并四舍五入', () => {
+  it('clamps copyLimitMB within valid bounds and rounds decimals', () => {
     expect(applySettingsPatch(BASE, { copyLimitMB: 10 }, false).next.copyLimitMB).toBe(
       COPY_LIMIT_MIN_MB
     )
@@ -29,7 +29,7 @@ describe('applySettingsPatch', () => {
     expect(applySettingsPatch(BASE, { copyLimitMB: Number.NaN }, false).next.copyLimitMB).toBe(2048)
   })
 
-  it('未打包状态下忽略 openAtLogin 修改，打包后允许修改', () => {
+  it('ignores openAtLogin changes when unpackaged and allows them when packaged', () => {
     const dev = applySettingsPatch(BASE, { openAtLogin: true }, false)
     expect(dev.next.openAtLogin).toBe(false)
     expect(dev.openAtLoginChanged).toBe(false)
@@ -39,7 +39,7 @@ describe('applySettingsPatch', () => {
     expect(prod.openAtLoginChanged).toBe(true)
   })
 
-  it('正确记录 alwaysOnTop 变更标记', () => {
+  it('tracks alwaysOnTopChanged accurately', () => {
     const off = applySettingsPatch(BASE, { alwaysOnTop: false }, false)
     expect(off.next.alwaysOnTop).toBe(false)
     expect(off.alwaysOnTopChanged).toBe(true)
@@ -48,7 +48,7 @@ describe('applySettingsPatch', () => {
     expect(same.alwaysOnTopChanged).toBe(false)
   })
 
-  it('校验并限制 focusMinutes、restMinutes 与 focusNotify', () => {
+  it('validates and clamps focusMinutes, restMinutes, and focusNotify', () => {
     expect(applySettingsPatch(BASE, { focusMinutes: 0 }, false).next.focusMinutes).toBe(
       FOCUS_MIN_MINUTES
     )

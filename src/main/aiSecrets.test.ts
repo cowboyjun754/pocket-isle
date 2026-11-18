@@ -31,7 +31,7 @@ afterEach(() => {
 })
 
 describe('AiCredentialStore & validateAiEndpointUrl', () => {
-  it('迁移旧版明文 apiKey 到加密 aiSecrets 并从 data.json 中清除明文', () => {
+  it('migrates legacy plaintext apiKey into encrypted aiSecrets and scrubs data.json', () => {
     const dir = makeTempDir('pocket-isle-secrets-')
     writeFileSync(
       join(dir, 'data.json'),
@@ -56,33 +56,33 @@ describe('AiCredentialStore & validateAiEndpointUrl', () => {
     const secrets = new AiCredentialStore(store, mockCodec)
     expect(secrets.migrateLegacyKey()).toBe(true)
 
-    // 密钥已可按 DeepSeek 源解密读取，且公开配置不含明文 apiKey
+    // Decrypted under DeepSeek origin while public config never leaks plaintext apiKey
     expect(secrets.getKey('https://api.deepseek.com/v1')).toBe('sk-legacy-secret-123')
     const pub = secrets.toPublicAiConfig(store.data.settings.ai)
     expect(pub.hasApiKey).toBe(true)
     expect('apiKey' in pub).toBe(false)
 
-    // 落盘文件内容中绝无明文密钥
+    // Persisted file must contain cipher only, no plaintext key
     const diskText = readFileSync(join(dir, 'data.json'), 'utf8')
     expect(diskText).not.toContain('sk-legacy-secret-123')
     expect(diskText).toContain('enc:')
   })
 
-  it('按协议、主机、端口隔离凭据，切换服务商与本地模型绝不沿用旧密钥', async () => {
+  it('isolates credentials by protocol/host/port and never reuses keys across providers', async () => {
     const dir = makeTempDir('pocket-isle-iso-')
     const store = new Store(dir)
     const secrets = new AiCredentialStore(store, mockCodec)
 
     secrets.setKey('https://api.deepseek.com/v1', 'sk-deepseek-key')
 
-    // 切换到 OpenAI 且未输入新密钥 -> 应拒绝沿用 DeepSeek 的密钥
+    // Switching to OpenAI without entering a key must reject reusing DeepSeek key
     const toOpenAi = secrets.resolveForInput({
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-4o-mini'
     })
     expect(toOpenAi.ok).toBe(false)
 
-    // 切换到本地 Ollama -> 无需密钥即可通过解析，且 apiKey 为空
+    // Switching to local Ollama succeeds with an empty apiKey
     const toOllama = secrets.resolveForInput({
       baseUrl: 'http://localhost:11434/v1',
       model: 'qwen2.5:7b'
@@ -92,7 +92,7 @@ describe('AiCredentialStore & validateAiEndpointUrl', () => {
       expect(toOllama.cfg.apiKey).toBe('')
     }
 
-    // 模拟真实测试请求：发往 Ollama 时请求头不得携带 DeepSeek Authorization
+    // Outbound test request to Ollama must not attach DeepSeek Authorization header
     const fetchSpy = vi.fn(async () => ({
       ok: true,
       json: async () => ({ choices: [{ message: { content: '{"reply":"你好"}' } }] })
@@ -107,11 +107,11 @@ describe('AiCredentialStore & validateAiEndpointUrl', () => {
       expect((init.headers as Record<string, string>).Authorization).toBeUndefined()
     }
 
-    // 原先保存的 DeepSeek 密钥仍完整保留
+    // Previously stored DeepSeek key remains intact
     expect(secrets.getKey('https://api.deepseek.com/v1')).toBe('sk-deepseek-key')
   })
 
-  it('远程接口强制 HTTPS，本地环回地址允许 HTTP', () => {
+  it('enforces HTTPS for remote endpoints while allowing HTTP on loopback hosts', () => {
     expect(validateAiEndpointUrl('http://api.openai.com/v1').ok).toBe(false)
     expect(validateAiEndpointUrl('https://api.openai.com/v1').ok).toBe(true)
     expect(validateAiEndpointUrl('http://localhost:11434/v1').ok).toBe(true)

@@ -1,9 +1,9 @@
 /**
- * 舞台坐标与三段式停靠几何（恢复昨日深受好评的水平左伸栈桥构图）：
- * 标准坐标系（dockSide === 'right'，即停靠在屏幕右边缘、水平木码头朝左伸向屏幕内）：
- * - x: 0..46    水平木栈桥最前端 + 系船桩 + 探头水獭 + 角标（停靠态 Docked 露出的 46px）
- * - x: 0..148   完整水平木栈桥 + 3 个包裹 + 岸边水獭（迎宾半开态 Peek 露出的 148px）
- * - x: 0..320   右侧整座小岛 + 6 件装饰 + 纸船与外圈海面（全展开态 Full 320px）
+ * Stage coordinates and three-stage edge docking geometry (horizontal left-extending pier composition):
+ * Standard coordinate frame (dockSide === 'right', docked on right screen edge with pier extending left):
+ * - x: 0..46    pier front tip, mooring bollard, peeking otter & count badge (docked state exposes 56px)
+ * - x: 0..148   full horizontal pier, 3 parcels & shoreline otter (peek state exposes 148px)
+ * - x: 0..320   complete right island, 6 decorations, paper boat & sea ring (full state exposes 320px)
  */
 
 export type Pt = { x: number; y: number }
@@ -20,29 +20,29 @@ export interface WorkAreaRect {
 export const STAGE = { w: 320, h: 240 }
 export const PANEL = { w: 430, h: 580 }
 
-/** 各档位在屏幕内露出的宽度（px） */
+/** Exposed screen width (px) for each expand mode. */
 export const VISIBLE_WIDTH: Record<ExpandMode, number> = {
   docked: 56,
   peek: 148,
   full: STAGE.w
 }
 
-/** 吸附到左右边缘的阈值（px） */
+/** Distance threshold (px) for snapping to left/right screen edges. */
 export const SNAP_THRESHOLD = 64
 
-/** 标准朝向（停在右边缘、码头朝左）下的岛体椭圆（偏右 x: 70..314，给左侧水平码头让出空间） */
+/** Island ellipse in standard orientation (docked right, pier extending left). */
 export const ISLAND_ELLIPSE = { cx: 192, cy: 132, rx: 122, ry: 88 }
 
-/** 岛上山坡景物上沿椭圆（覆盖小树冠、路灯顶、木屋顶与风车扇叶上半部） */
+/** Upper hill skyline ellipse (covers tree canopy, lamp top, cabin roof, and upper windmill blades). */
 export const SKYLINE_ELLIPSE = { cx: 194, cy: 56, rx: 94, ry: 44 }
 
-/** 全展开态右上角悬停按钮热区（连通山坡与岛体，同时保留四角点击穿透） */
+/** Top-right hover control hit region when expanded (bridges hill & island while leaving corners click-through). */
 export const HOVER_CTRL_RECT = { x0: 246, y0: 10, x1: 312, y1: 88 }
 
-/** 草地内圈椭圆（贴合 island-horiz.png 绿草坪范围，区分“草地”与“沙滩/外圈海水”） */
+/** Inner turf ellipse matching island-horiz.png grass boundary (distinguishes turf vs beach/sea). */
 export const GRASS_ELLIPSE = { cx: 194, cy: 106, rx: 95, ry: 52 }
 
-/** 水平左伸木码头多边形（x: 4..116，覆盖角标、栈桥包裹与底部专注胶囊） */
+/** Horizontal left-extending wooden pier polygon (x: 4..116, covers badge, parcels, and focus pill). */
 export const DOCK_POLY: Pt[] = [
   { x: 4, y: 70 },
   { x: 112, y: 82 },
@@ -50,23 +50,23 @@ export const DOCK_POLY: Pt[] = [
   { x: 4, y: 160 }
 ]
 
-/** 包裹落点（底部中心，精准落在手绘木栈桥板面上并避开系船桩麻绳） */
+/** Parcel bottom-center anchor slots positioned on pier planks clear of the rope bollard. */
 export const DOCK_SLOTS: Pt[] = [
   { x: 47, y: 117 },
   { x: 70, y: 120 },
   { x: 93, y: 123 }
 ]
 
-/** 数字角标圆心（位于栈桥前端系船桩斜上方，停靠态 56px 内完整露出且不遮挡麻绳） */
+/** Count badge center near pier front bollard (remains fully visible inside 56px docked strip). */
 export const DOCK_BADGE: Pt = { x: 17, y: 74 }
 
-/** 水獭默认落脚点（栈桥根部草地上） */
+/** Default otter anchor on grass at the pier base. */
 export const OTTER_HOME: Pt = { x: 156, y: 148 }
 
-/** 停靠态下水獭稳稳坐在栈桥第 2-3 块木板中央的位置（完整留在 56px 视口内） */
+/** Docked-mode otter anchor resting centered on planks 2-3 inside the 56px viewport strip. */
 export const OTTER_PEEK: Pt = { x: 35, y: 118 }
 
-/** 计算某个停靠方向 + 展开档位下，画布相对于窗口的水平位移 translateX（px） */
+/** Computes horizontal canvas offset translateX (px) relative to the window for a given side and mode. */
 export function getStageOffsetX(side: DockSide, mode: ExpandMode): number {
   if (side === 'free' || mode === 'full') return 0
   const vis = VISIBLE_WIDTH[mode]
@@ -91,17 +91,17 @@ export function inPolygon(x: number, y: number, poly: Pt[]): boolean {
   return inside
 }
 
-/** 栈桥包裹悬停名牌与「扔海里」按钮热区（有包裹且非 docked 时防止名牌区鼠标穿透） */
+/** Parcel nameplate & sea-drop button hit region (prevents click-through while parcels exist outside docked mode). */
 export const DOCK_NAMEPLATE_RECT = { x0: 6, y0: 18, x1: 156, y1: 102 }
 
-/** 栈桥前缘到近海水面的右手拖抛过渡区（有包裹且非 docked 时防止跨水缘穿透） */
+/** Right-side pier-to-sea transition bridge for dragging parcels into water without premature pass-through. */
 export const DOCK_SEA_TRANSITION_RECT = { x0: 36, y0: 150, x1: 132, y1: 188 }
 
-/** 岛上撤销浮条热区（半开与全展开态出现「撤销移除」按钮时防止鼠标穿透） */
+/** Bottom undo pill hit region in peek/full modes (prevents click-through while undo pill is active). */
 export const ISLAND_UNDO_PEEK_RECT = { x0: 6, y0: 174, x1: 146, y1: 218 }
 export const ISLAND_UNDO_FULL_RECT = { x0: 40, y0: 190, x1: 280, y1: 232 }
 
-/** 判断舞台局部坐标是否落在外圈海面（点击可触发水波涟漪） */
+/** Returns true when stage coordinates fall on surrounding sea water (triggers water ripples). */
 export function isOnWater(localX: number, localY: number): boolean {
   return (
     inEllipse(localX, localY, ISLAND_ELLIPSE) &&
@@ -111,7 +111,7 @@ export function isOnWater(localX: number, localY: number): boolean {
 }
 
 /**
- * 判断窗口内坐标 (winX, winY) 是否落在当前可见的小岛交互区域内。
+ * Checks whether window coordinates (winX, winY) lie inside the visible interactive island region.
  */
 export function isInsideIsland(
   winX: number,
@@ -173,9 +173,9 @@ export function isInsideIsland(
 }
 
 /**
- * 判断拖拽栈桥包裹时，指针是否仍处于“岛内手抓拖放区”（含栈桥到前方海面的过渡区）：
- * - 在区内保持纯前端手抓交互，不启动系统 OLE 拖拽（无路径文字、无箭头粘贴图标）；
- * - 拖出该区域（如往左拖离栈桥或拖离岛体边缘）则立即交由系统 startDrag 传出文件。
+ * Determines whether parcel dragging stays inside the in-island grab zone (pier + sea transition bridge):
+ * - Inside: renders frontend grab animation without initiating native OS drag;
+ * - Outside (dragged past pier tip or island bounds): engages native OS startDrag immediately.
  */
 export function isWithinParcelDragZone(
   winX: number,
@@ -200,9 +200,9 @@ export function isWithinParcelDragZone(
 }
 
 /**
- * 根据拖拽起止位置与屏幕工作区边界，计算松手后的停靠方向：
- * - 从贴边态（right/left）向屏幕内拉出超过 SNAP_THRESHOLD 且光标远离边缘时，顺滑脱离为 free；
- * - 从自由态（free）拖近左右边缘（光标 ≤ SNAP_THRESHOLD 或窗口距边缘 ≤ 24px）时，吸附停靠。
+ * Resolves edge-snap side after window drag release using drag start/end coordinates and workArea bounds:
+ * - Pulling inward from docked edge past SNAP_THRESHOLD transitions smoothly to free-floating mode;
+ * - Moving within SNAP_THRESHOLD (or 24px window gap) of left/right edges snaps cleanly back.
  */
 export function resolveSnapSide(params: {
   winX: number
@@ -250,9 +250,9 @@ export function clampIslandToWorkArea(
 }
 
 /**
- * 显示器分辨率、DPI 缩放或插拔变化后重算小岛合法位置：
- * - 即使旧坐标中心仍在新屏幕内，只要是 left / right 停靠态也强制吸齐对应边缘；
- * - 若旧显示器已移除，则回退至主显示器工作区。
+ * Recomputes valid island coordinates after display resolution, DPI scaling, or monitor changes:
+ * - Left/right docked islands re-snap to the edge even if the old center remains on screen;
+ * - If the previous display was disconnected, falls back to the primary display workArea.
  */
 export function reconcileIslandPosOnDisplayChange(params: {
   currentPos?: { x: number; y: number }

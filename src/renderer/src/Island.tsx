@@ -44,7 +44,7 @@ import { useParcelGestures } from './island/useParcelGestures'
 import './island.css'
 import { describeResult } from './util'
 
-/** 桌面悬停交互小岛主舞台，协调窗口拖拽、纸船与景物互动，以及栈桥包裹子层。 */
+/** Desktop floating island stage coordinating window drag, interactive toys, and pier parcel layers. */
 export function Island(): JSX.Element {
   const [items, setItems] = useState<DockItem[]>([])
   const [pose, setPose] = useState<IslandPose>({ side: 'right', mode: 'docked', hover: false })
@@ -68,7 +68,7 @@ export function Island(): JSX.Element {
   const [undoState, setUndoState] = useState<DockUndoState | null>(null)
   const [draggingWin, setDraggingWin] = useState(false)
 
-  // 水獭在全展开岛上的漫游坐标（点哪里就蹦蹦跳跳走去哪里）
+  // Otter roaming destination on the expanded island (hops over on user clicks)
   const [roamSpot, setRoamSpot] = useState<{ x: number; y: number } | null>(null)
 
   const [ripples, setRipples] = useState<WaterRipple[]>([])
@@ -283,7 +283,7 @@ export function Island(): JSX.Element {
     }
   }, [gestures.clearEndedDragState, showToast, triggerOtter])
 
-  // 全展开空闲时，水獭偶尔自己在已启用的景点间散步换个位置
+  // Periodically stroll between enabled island landmarks while idle in full mode
   useEffect(() => {
     if (
       pose.mode !== 'full' ||
@@ -463,7 +463,7 @@ export function Island(): JSX.Element {
       if (isOnWater(st.localX, st.localY)) {
         spawnRipple(st.localX, st.localY)
       } else if (inEllipse(st.localX, st.localY, GRASS_ELLIPSE)) {
-        // 点击草地任意空白处：种下一簇小花苗（持久记忆）+ 水獭蹦蹦跳跳跑过来
+        // Clicking open turf plants a persistent flower sprout and sends the otter over to celebrate
         const kind = Math.floor(Math.random() * 3) as 0 | 1 | 2
         const nextSprouts: IslandSprout[] = [
           ...sproutsRef.current.slice(-6),

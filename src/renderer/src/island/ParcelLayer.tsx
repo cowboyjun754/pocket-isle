@@ -5,7 +5,7 @@ import type { DockItem, IslandPose } from '../../../shared/types'
 import { PARCEL_SPRITES } from './islandAssets'
 import type { DraggingParcel, ReleasingHand, SinkingParcel } from './islandMath'
 
-/** 抓握或张开的小手矢量图标，用于将包裹拖入海里移出码头的视觉反馈。 */
+/** Animated open/closed grab hand icon shown while dragging or tossing parcels into the sea. */
 export function GrabHandSvg({ open, className }: { open: boolean; className?: string }): JSX.Element {
   return (
     <svg className={className} width="26" height="26" viewBox="0 0 28 28" fill="none" aria-hidden>
@@ -53,7 +53,7 @@ interface ParcelLayerProps {
   onDockOpenPanel: (e: React.MouseEvent) => void
 }
 
-/** 渲染栈桥上的可见包裹层、悬停信息名牌、小手抛投动画与超出 3 项时的 `+N` 胶囊。 */
+/** Renders visible pier parcels, hover nameplates, sea-throw hand animation, and the `+N` overflow badge. */
 export function ParcelLayer({
   items,
   effectiveMode,
@@ -236,7 +236,7 @@ export function ParcelLayer({
   )
 }
 
-/** 渲染松手张开的小手与入水沉没包裹动画。 */
+/** Renders open-hand release and sinking-parcel splash animations after sea drops. */
 export function ParcelReleaseEffects({
   releasingHands,
   sinkingParcels

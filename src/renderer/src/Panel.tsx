@@ -78,7 +78,7 @@ export function Panel(): JSX.Element {
   } = useAiTask(setNotice)
   const [testingAi, setTestingAi] = useState(false)
 
-  // 专注计时与拆解
+  // Focus timer and goal breakdown
   const [focus, setFocus] = useState<FocusState>({
     phase: 'idle',
     running: false,
@@ -89,7 +89,7 @@ export function Panel(): JSX.Element {
   })
   const [focusDocIds, setFocusDocIds] = useState<Set<string>>(new Set())
 
-  // 自由桌搭
+  // Island decorations & ambience
   const [decor, setDecor] = useState<DecorationState>({
     ambience: 'day',
     enabled: {
@@ -118,7 +118,7 @@ export function Panel(): JSX.Element {
   const lastValidOriginRef = useRef('https://api.deepseek.com')
   const dockSearchRef = useRef<HTMLInputElement>(null)
 
-  // 通用与 AI 配置
+  // General & AI settings
   const [settings, setSettings] = useState<Settings>({
     alwaysOnTop: true,
     openAtLogin: false,

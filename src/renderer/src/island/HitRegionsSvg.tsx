@@ -34,7 +34,7 @@ interface HitRegionsSvgProps {
   onSpotActivate: (spotId: IslandSpotId) => void
 }
 
-/** 渲染岛屿透明交互热区层：栈桥、全展开 8 处可互动景点与水獭角色。 */
+/** Renders transparent SVG hit regions for the pier, 8 expanded island landmarks, and the otter sprite. */
 export function HitRegionsSvg({
   effectiveMode,
   decorEnabled,

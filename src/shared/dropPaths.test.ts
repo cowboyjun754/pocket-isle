@@ -21,7 +21,7 @@ function fakeDt(
 }
 
 describe('dropPaths (URI / IDE / Explorer drag-in parsing)', () => {
-  it('正确解析 file:/// URI（含空格、中文与编码冒号 %3A）与 UNC 路径', () => {
+  it('parses file:/// URIs (including spaces, Unicode, encoded %3A) and UNC paths', () => {
     expect(parseFileUri('file:///D:/Pocket%20Isle/PROJECT_HANDOFF.md')).toBe(
       'D:\\Pocket Isle\\PROJECT_HANDOFF.md'
     )
@@ -33,7 +33,7 @@ describe('dropPaths (URI / IDE / Explorer drag-in parsing)', () => {
     expect(parseFileUri('https://example.com/a.pdf')).toBeNull()
   })
 
-  it('优先使用原生 File 列表；无 files 时回退解析 ResourceURLs / text/uri-list / text/html / text/plain', () => {
+  it('prefers native File entries and falls back to ResourceURLs / uri-list / html / plain text', () => {
     const native = fakeDt(
       { 'text/plain': 'ignore.txt' },
       [{ name: 'a.txt', path: 'D:\\a.txt' }]
@@ -63,12 +63,12 @@ describe('dropPaths (URI / IDE / Explorer drag-in parsing)', () => {
     ])
   })
 
-  it('非绝对路径或网页 URL 不被误识别为本地文件', () => {
+  it('rejects relative paths and HTTP URLs as local files', () => {
     expect(parseLocalPathCandidate('PROJECT_HANDOFF.md')).toBeNull()
     expect(parseLocalPathCandidate('https://github.com/test')).toBeNull()
   })
 
-  it('根据源 effectAllowed 协商 dropEffect', () => {
+  it('negotiates dropEffect based on source effectAllowed', () => {
     expect(chooseDropEffect('all')).toBe('copy')
     expect(chooseDropEffect('copyLink')).toBe('copy')
     expect(chooseDropEffect('link')).toBe('link')

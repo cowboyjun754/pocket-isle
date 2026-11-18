@@ -105,7 +105,7 @@ export async function extractFileSnippet(
 }
 
 /**
- * 批量提取文件内容（带并发控制、总读取字节预算、取消中断与 4 张附图上限同步）
+ * Extracts file snippets in batches with bounded concurrency, byte budget, abort propagation, and Vision image limit sync.
  */
 export async function extractFilesBatch(
   items: DockItem[],
@@ -206,7 +206,7 @@ export async function extractFilesBatch(
   return results
 }
 
-/** 统一校验发送给模型的多模态图片名额，确保模型上下文、附图数量与 UI 读数回执完全一致 */
+/** Allocates model multimodal Vision image slots consistently with payload contents and UI read receipts. */
 export function applyVisionImageBudget(
   docs: ExtractedDoc[],
   enableVision: boolean,

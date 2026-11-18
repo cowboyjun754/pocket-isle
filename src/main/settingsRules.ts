@@ -7,7 +7,7 @@ export const FOCUS_MAX_MINUTES = 180
 export const REST_MIN_MINUTES = 1
 export const REST_MAX_MINUTES = 60
 
-/** 校验并应用通用设置更新：限制副本容量上限区间，未打包时不修改开机自启状态 */
+/** Validates and applies general settings updates (clamps quota & skips openAtLogin when unpackaged). */
 export function applySettingsPatch(
   current: Settings,
   rawPatch: unknown,

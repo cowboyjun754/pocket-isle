@@ -9,9 +9,9 @@ export interface ActiveAiTask {
 }
 
 /**
- * 统一管理面板内的 AI 任务状态机与主进程实时阶段进度：
- * - 同时最多仅展示一个活动任务，切页发起新任务自动使旧任务序号失效；
- * - 过期任务无论成功、取消或异常均严格丢弃，避免残留旧加载态或错乱提示。
+ * Centralized panel AI task state machine synced with main-process progress updates:
+ * - Shows at most one active task at a time; launching a new task invalidates previous sequence IDs;
+ * - Stale completions, cancellations, or errors are dropped cleanly without leaving orphan UI state.
  */
 export function useAiTask(onNotice: (msg: string) => void): {
   activeTask: ActiveAiTask | null

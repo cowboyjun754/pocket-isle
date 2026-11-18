@@ -7,11 +7,11 @@ const DEFAULT_REST_MIN = 5
 const CHECKPOINT_INTERVAL_MS = 15_000
 
 /**
- * 独立专注与休息计时器（v3）：
- * - 按真实经过的时间（Date.now() 差值）在主进程统一计算；
- * - 锁屏或休眠时自动暂停，恢复后等待用户继续；
- * - 运行期间每 15 秒保存一次轻量检查点，异常退出时最大回退不超过一个检查点周期；
- * - 计时结束只提示本轮结束，不自动把任务步骤标为已完成，也不与装饰解锁挂钩。
+ * Independent focus & rest timer controller (v3):
+ * - Computes elapsed time centrally from wall-clock `Date.now()` deltas in main process;
+ * - Auto-pauses on screen lock / suspend and waits for resume;
+ * - Saves lightweight checkpoints every 15s while running so crashes lose at most one interval;
+ * - Emits gentle completion cues only without auto-checking user steps or gating decorations.
  */
 export class FocusController {
   private ticker: NodeJS.Timeout | null = null
@@ -45,7 +45,7 @@ export class FocusController {
     return this.store.data.focus
   }
 
-  /** 空闲状态下同步用户新设置的专注时长 */
+  /** Syncs updated focus duration while the timer is idle. */
   syncIdleDuration(): void {
     const f = this.store.data.focus
     if (f.phase === 'idle' && !f.running) {
