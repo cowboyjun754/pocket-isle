@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import type { DockItem, FocusState, FocusStep } from '../../../shared/types'
+import { getMessages } from '../../../shared/i18n'
+import type { AppLocale, DockItem, FocusState, FocusStep } from '../../../shared/types'
 import { SparkleIcon, formatClock } from './panelShared'
 
 interface FocusTabProps {
+  locale: AppLocale
   focus: FocusState
   items: DockItem[]
   focusMins: number
@@ -27,6 +29,7 @@ interface FocusTabProps {
 
 export function FocusTab(props: FocusTabProps): JSX.Element {
   const {
+    locale,
     focus,
     items,
     focusMins,
@@ -49,19 +52,26 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
     onCancelAi
   } = props
 
+  const fm = getMessages(locale).panel.focus
   const [newStepText, setNewStepText] = useState('')
+  const draftFocusMins =
+    Number.isFinite(Number(focusMinDraft)) &&
+    Number(focusMinDraft) >= 1 &&
+    Number(focusMinDraft) <= 180
+      ? Math.round(Number(focusMinDraft))
+      : focusMins
 
   return (
     <div className="tab-body">
       <div className="focus-timer-card">
         <div className="timer-phase-badge">
           {focus.phase === 'focus'
-            ? '📖 专注陪伴中（水獭保持安静）'
+            ? fm.phaseFocus
             : focus.phase === 'focus_done'
-              ? '🎉 本轮专注已完成！休息一下吧'
+              ? fm.phaseDone
               : focus.phase === 'rest'
-                ? '☕ 休息放松中'
-                : `⏱ 准备开始新的一轮（${focusMins} 分钟专注 + ${restMins} 分钟休息）`}
+                ? fm.phaseRest
+                : fm.phaseIdle(focusMins, restMins)}
         </div>
         <div className="timer-digits">{formatClock(focus.remainingMs)}</div>
         {focus.phase === 'idle' && (
@@ -73,13 +83,13 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
                   className={focusMins === m ? 'active' : ''}
                   onClick={() => onApplyFocusDurations(m)}
                 >
-                  {m}分
+                  {fm.presetMinSuffix(m)}
                 </button>
               ))}
             </div>
             <div className="focus-custom-inputs">
-              <label title="自定义专注时长（1～180 分钟）">
-                <span>专注</span>
+              <label title={fm.customFocusTitle}>
+                <span>{fm.customFocusLabel}</span>
                 <input
                   type="number"
                   min={1}
@@ -91,10 +101,10 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
                     if (e.key === 'Enter') onApplyFocusDurations(Number(focusMinDraft))
                   }}
                 />
-                <span>分</span>
+                <span>{fm.minUnit}</span>
               </label>
-              <label title="自定义休息时长（1～60 分钟）">
-                <span>休息</span>
+              <label title={fm.customRestTitle}>
+                <span>{fm.customRestLabel}</span>
                 <input
                   type="number"
                   min={1}
@@ -106,7 +116,7 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
                     if (e.key === 'Enter') onApplyFocusDurations(undefined, Number(restMinDraft))
                   }}
                 />
-                <span>分</span>
+                <span>{fm.minUnit}</span>
               </label>
             </div>
           </div>
@@ -116,42 +126,33 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
             <button
               className="btn-primary"
               onClick={async () => {
-                const n = Number(focusMinDraft)
-                const useMins =
-                  Number.isFinite(n) && n >= 1 && n <= 180 ? Math.round(n) : focusMins
-                if (useMins !== focusMins) {
-                  await onApplyFocusDurations(useMins)
+                if (draftFocusMins !== focusMins) {
+                  await onApplyFocusDurations(draftFocusMins)
                 }
-                window.isle.focusControl('start_focus', useMins)
+                window.isle.focusControl('start_focus', draftFocusMins)
               }}
             >
-              开始{' '}
-              {Number.isFinite(Number(focusMinDraft)) &&
-              Number(focusMinDraft) >= 1 &&
-              Number(focusMinDraft) <= 180
-                ? Math.round(Number(focusMinDraft))
-                : focusMins}{' '}
-              分钟专注
+              {fm.startFocusBtn(draftFocusMins)}
             </button>
           )}
           {(focus.phase === 'focus' || focus.phase === 'rest') && (
             <>
               {focus.running ? (
-                <button onClick={() => window.isle.focusControl('pause')}>暂停</button>
+                <button onClick={() => window.isle.focusControl('pause')}>{fm.pauseBtn}</button>
               ) : (
                 <button
                   className="btn-primary"
                   onClick={() => window.isle.focusControl('resume')}
                 >
-                  继续
+                  {fm.resumeBtn}
                 </button>
               )}
               {focus.phase === 'focus' && (
                 <button onClick={() => window.isle.focusControl('start_rest', restMins)}>
-                  转入 {restMins} 分钟休息
+                  {fm.switchRestBtn(restMins)}
                 </button>
               )}
-              <button onClick={() => window.isle.focusControl('reset')}>结束本轮</button>
+              <button onClick={() => window.isle.focusControl('reset')}>{fm.resetBtn}</button>
             </>
           )}
           {focus.phase === 'focus_done' && (
@@ -160,9 +161,9 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
                 className="btn-primary"
                 onClick={() => window.isle.focusControl('start_rest', restMins)}
               >
-                开始 {restMins} 分钟休息
+                {fm.startRestBtn(restMins)}
               </button>
-              <button onClick={() => window.isle.focusControl('reset')}>稍后休息</button>
+              <button onClick={() => window.isle.focusControl('reset')}>{fm.restLaterBtn}</button>
             </>
           )}
         </div>
@@ -171,31 +172,22 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
       <div className="focus-plan-box">
         <div className="plan-header-row">
           <div>
-            <div className="section-label">本轮小目标与微步骤</div>
-            <div className="section-sub">
-              发送至 {providerLabel} ·{' '}
-              {focusDocIds.size > 0
-                ? `目标 + 已选 ${focusDocIds.size} 份资料`
-                : '仅发送目标文本（不自动附带文件）'}
-            </div>
+            <div className="section-label">{fm.planTitle}</div>
+            <div className="section-sub">{fm.planSub(providerLabel, focusDocIds.size)}</div>
           </div>
           <div className="plan-ai-actions">
             <button
               className="btn-ai-pill"
               disabled={aiBreakingDown}
               onClick={onAiBreakdown}
-              title={`使用 ${providerLabel} 拆解为 ${focusMins} 分钟步骤（${
-                focusDocIds.size > 0
-                  ? `附带已选的 ${focusDocIds.size} 份资料`
-                  : '仅发送目标，不附带文件'
-              }）`}
+              title={fm.breakdownTitle(providerLabel, focusMins, focusDocIds.size)}
             >
               <SparkleIcon />
-              <span>{aiBreakingDown ? '正在拆解...' : 'AI 帮我拆解'}</span>
+              <span>{aiBreakingDown ? fm.breakingBtn : fm.breakdownBtn}</span>
             </button>
             {aiBreakingDown && (
               <button className="btn-cancel-ai" onClick={onCancelAi}>
-                取消
+                {fm.cancelBtn}
               </button>
             )}
           </div>
@@ -208,7 +200,7 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
         <div className="goal-input-row">
           <input
             value={focus.goal}
-            placeholder={`这 ${focusMins} 分钟想推进什么？（例如：读完需求文档并列出 3 个问题）`}
+            placeholder={fm.goalPlaceholder(focusMins)}
             onChange={(e) => onCommitFocusPlan(e.target.value, focus.steps)}
             onBlur={onFlushPendingPlan}
             onKeyDown={(e) => {
@@ -222,25 +214,22 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
         {items.length > 0 && (
           <div className="doc-picker-bar">
             <div className="doc-picker-top">
-              <span className="picker-label">
-                关联资料
-                {focusDocIds.size > 0 ? `（已选 ${focusDocIds.size}）` : '（未选，仅发送目标）'}：
-              </span>
+              <span className="picker-label">{fm.pickerLabel(focusDocIds.size)}</span>
               <div className="picker-quick-actions">
                 {focusDocIds.size === 0 ? (
                   <button
                     className="picker-quick-btn"
                     onClick={() => setFocusDocIds(new Set(items.slice(-5).map((i) => i.id)))}
-                    title="主动勾选码头最近加入的最多 5 份文件"
+                    title={fm.pickRecentTitle}
                   >
-                    + 选入最近 {Math.min(5, items.length)} 份
+                    {fm.pickRecentBtn(Math.min(5, items.length))}
                   </button>
                 ) : (
                   <button
                     className="picker-quick-btn"
                     onClick={() => setFocusDocIds(new Set())}
                   >
-                    清空已选
+                    {fm.clearPickedBtn}
                   </button>
                 )}
               </div>
@@ -248,7 +237,7 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
                 <input
                   className="picker-filter-input"
                   value={focusDocQuery}
-                  placeholder="筛选文件名..."
+                  placeholder={fm.filterPlaceholder}
                   onChange={(e) => setFocusDocQuery(e.target.value)}
                 />
               )}
@@ -316,7 +305,7 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
                   const next = focus.steps.filter((_, i) => i !== idx)
                   onCommitFocusPlan(focus.goal, next, true)
                 }}
-                title="删除步骤"
+                title={fm.delStepTitle}
               >
                 ✕
               </button>
@@ -326,7 +315,7 @@ export function FocusTab(props: FocusTabProps): JSX.Element {
           <div className="step-add-row">
             <input
               value={newStepText}
-              placeholder="+ 手动添加一条微步骤，按回车保存"
+              placeholder={fm.addStepPlaceholder}
               onChange={(e) => setNewStepText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newStepText.trim()) {

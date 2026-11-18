@@ -5,12 +5,14 @@ import {
   describeAiProvider
 } from '../../shared/aiProvider'
 import { chooseDropEffect, extractPathsFromDataTransfer } from '../../shared/dropPaths'
+import { DEFAULT_LOCALE, getMessages, resolveLocale } from '../../shared/i18n'
 import { getParcelKindForExt } from '../../shared/parcelKind'
 import type {
   AiConfig,
   AiKeyStatus,
   AmbienceMode,
   AppEnv,
+  AppLocale,
   DecorationId,
   DecorationState,
   DockItem,
@@ -65,6 +67,29 @@ export function Panel(): JSX.Element {
   const [focusDocQuery, setFocusDocQuery] = useState('')
   const [jointCard, setJointCard] = useState<JointCardState | null>(null)
 
+  // General & AI settings
+  const [settings, setSettings] = useState<Settings>({
+    locale: DEFAULT_LOCALE,
+    alwaysOnTop: true,
+    openAtLogin: false,
+    copyLimitMB: 2048,
+    focusMinutes: 25,
+    restMinutes: 5,
+    focusNotify: true,
+    ai: {
+      baseUrl: DEFAULT_AI_BASE_URL,
+      model: DEFAULT_AI_MODEL,
+      enableVision: false,
+      hasApiKey: false,
+      requiresKey: true
+    }
+  })
+  const locale = resolveLocale(settings.locale)
+  const localeRef = useRef<AppLocale>(locale)
+  localeRef.current = locale
+  const m = getMessages(locale)
+  const pm = m.panel
+
   const {
     aiOrganizing,
     aiJointLoading,
@@ -75,7 +100,7 @@ export function Panel(): JSX.Element {
     beginAiTask,
     finishAiTask,
     cancelActiveAi
-  } = useAiTask(setNotice)
+  } = useAiTask(setNotice, locale)
   const [testingAi, setTestingAi] = useState(false)
 
   // Focus timer and goal breakdown
@@ -118,22 +143,6 @@ export function Panel(): JSX.Element {
   const lastValidOriginRef = useRef('https://api.deepseek.com')
   const dockSearchRef = useRef<HTMLInputElement>(null)
 
-  // General & AI settings
-  const [settings, setSettings] = useState<Settings>({
-    alwaysOnTop: true,
-    openAtLogin: false,
-    copyLimitMB: 2048,
-    focusMinutes: 25,
-    restMinutes: 5,
-    focusNotify: true,
-    ai: {
-      baseUrl: DEFAULT_AI_BASE_URL,
-      model: DEFAULT_AI_MODEL,
-      enableVision: false,
-      hasApiKey: false,
-      requiresKey: true
-    }
-  })
   const [copyLimitDraft, setCopyLimitDraft] = useState('2048')
   const [focusMinDraft, setFocusMinDraft] = useState('25')
   const [restMinDraft, setRestMinDraft] = useState('5')
@@ -153,6 +162,11 @@ export function Panel(): JSX.Element {
     requiresKey: true,
     valid: true
   })
+
+  useEffect(() => {
+    document.documentElement.lang = locale === 'en' ? 'en' : 'zh-CN'
+    document.title = getMessages(locale).appName
+  }, [locale])
 
   const syncOriginKeyStatus = (baseUrl: string): void => {
     const qSeq = ++keyQuerySeqRef.current
@@ -239,7 +253,7 @@ export function Panel(): JSX.Element {
     return [...map.entries()].sort((a, b) => {
       if (!a[0]) return 1
       if (!b[0]) return -1
-      return a[0].localeCompare(b[0], 'zh-CN')
+      return a[0].localeCompare(b[0], locale === 'en' ? 'en' : 'zh-CN')
     })
   })()
 
@@ -251,7 +265,7 @@ export function Panel(): JSX.Element {
     selected,
     query: dockQuery
   })
-  const providerLabel = describeAiProvider(settings.ai.baseUrl)
+  const providerLabel = describeAiProvider(settings.ai.baseUrl, locale)
 
   useEffect(() => {
     refreshDock()
@@ -277,7 +291,7 @@ export function Panel(): JSX.Element {
     window.isle.getPanelPinned().then(setPinned)
 
     const off1 = window.isle.onDockChanged(refreshDock)
-    const off2 = window.isle.onReceived((r) => setNotice(describeResult(r)))
+    const off2 = window.isle.onReceived((r) => setNotice(describeResult(r, localeRef.current)))
     const off3 = window.isle.onDecorChanged(setDecor)
     const off4 = window.isle.onFocusChanged((nextFocus) => {
       if (pendingPlanRef.current) {
@@ -305,9 +319,8 @@ export function Panel(): JSX.Element {
       if (settingsRef.current.focusNotify !== false) {
         playFocusChime()
       }
-      setNotice(
-        finishedPhase === 'focus' ? '本轮专注结束，记得站起来歇会儿~' : '休息结束啦，随时开始下一轮！'
-      )
+      const nm = getMessages(localeRef.current).notifications
+      setNotice(finishedPhase === 'focus' ? nm.focusDonePanel : nm.restDonePanel)
     })
     const off8 = window.isle.onDockUndoChanged(setDockUndo)
 
@@ -343,7 +356,7 @@ export function Panel(): JSX.Element {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         window.isle.pasteFromClipboard().then((res) => {
-          const msg = describeResult(res)
+          const msg = describeResult(res, localeRef.current)
           if (msg) setNotice(msg)
         })
       }
@@ -436,11 +449,11 @@ export function Panel(): JSX.Element {
 
   const onOpen = async (it: DockItem): Promise<void> => {
     if (it.available === false) {
-      setNotice('文件不可用，原文件可能已被移动或删除')
+      setNotice(pm.notices.fileUnavailable)
       return
     }
     const err = await window.isle.open(it.id)
-    if (err) setNotice(`无法打开：${err}`)
+    if (err) setNotice(pm.notices.cannotOpen(err))
   }
 
   const onPreview = async (it: DockItem): Promise<void> => {
@@ -453,7 +466,7 @@ export function Panel(): JSX.Element {
     if (TEXT_PREVIEW_EXTS.has(it.ext)) {
       const res = await window.isle.readTextPreview(it.id)
       if (res.ok) setPreview({ item: it, text: res.content ?? '', truncated: res.truncated })
-      else setNotice(res.message || '无法预览文件内容')
+      else setNotice(res.message || pm.notices.cannotPreview)
     }
   }
 
@@ -469,7 +482,7 @@ export function Panel(): JSX.Element {
     if (paths.length) {
       await window.isle.addPaths(paths)
     } else {
-      setNotice('未识别到本地文件路径，请从文件列表或资源管理器拖入')
+      setNotice(pm.notices.dropUnknown)
     }
   }
 
@@ -481,15 +494,15 @@ export function Panel(): JSX.Element {
   const handleAiOrganize = async (): Promise<void> => {
     if (aiOrganizing || aiJointLoading) return
     if (organizeScope.count === 0) {
-      setNotice('当前筛选结果为空，没有可整理的文件')
+      setNotice(pm.notices.emptyOrganizeFilter)
       return
     }
-    const { seq, taskId } = beginAiTask('organize', '正在准备解析文件…')
+    const { seq, taskId } = beginAiTask('organize', pm.notices.prepOrganize)
     try {
       const res = await window.isle.aiOrganizeDock(organizeScope.targetIds, taskId)
       if (!isCurrentSeq(seq)) return
       setNotice(res.message)
-      if (!res.ok && !res.cancelled && res.message.includes('设置')) {
+      if (!res.ok && !res.cancelled && res.needsSetup) {
         setTab('settings')
       }
     } finally {
@@ -500,15 +513,15 @@ export function Panel(): JSX.Element {
   const handleAiJointSummary = async (): Promise<void> => {
     if (aiJointLoading || aiOrganizing) return
     if (selected.size < 2) {
-      setNotice('请至少选中 2 份文件后再发起联合速览')
+      setNotice(pm.notices.needTwoJoint)
       return
     }
     const targetIds = [...selected].slice(0, 6)
     const names = items.filter((i) => targetIds.includes(i.id)).map((i) => i.name)
     if (selected.size > 6) {
-      setNotice('联合速览一次最多串读前 6 份选中文件')
+      setNotice(pm.notices.jointMaxSix)
     }
-    const { seq, taskId } = beginAiTask('joint', '正在准备读取选中文件…')
+    const { seq, taskId } = beginAiTask('joint', pm.notices.prepJoint)
     try {
       const res = await window.isle.aiJointSummary(
         targetIds,
@@ -517,13 +530,13 @@ export function Panel(): JSX.Element {
       )
       if (!isCurrentSeq(seq)) return
       setNotice(res.message)
-      if (!res.ok && !res.cancelled && res.message.includes('设置')) {
+      if (!res.ok && !res.cancelled && res.needsSetup) {
         setTab('settings')
         return
       }
       if (res.ok && res.markdown) {
         setJointCard({
-          title: res.title || '联合速览卡片',
+          title: res.title || pm.notices.jointFallbackTitle,
           markdown: res.markdown,
           files: names,
           receipts: res.files
@@ -541,13 +554,13 @@ export function Panel(): JSX.Element {
     const docIds = resolveBreakdownDocIds(focusDocIds)
     const { seq, taskId } = beginAiTask(
       'breakdown',
-      docIds.length > 0 ? '正在读取关联资料…' : `水獭正在拆解 ${focusMins} 分钟步骤…`
+      docIds.length > 0 ? pm.notices.prepBreakdownDocs : pm.notices.prepBreakdownGoal(focusMins)
     )
     try {
       const res = await window.isle.aiBreakdownGoal(focus.goal, docIds, focusMins, taskId)
       if (!isCurrentSeq(seq)) return
       setNotice(res.message)
-      if (!res.ok && !res.cancelled && res.message.includes('设置')) {
+      if (!res.ok && !res.cancelled && res.needsSetup) {
         setTab('settings')
         return
       }
@@ -567,12 +580,12 @@ export function Panel(): JSX.Element {
 
   const handleAiDecor = async (): Promise<void> => {
     if (aiDecorating) return
-    const { seq, taskId } = beginAiTask('decor', '水獭正在挑选中意的桌搭方案…')
+    const { seq, taskId } = beginAiTask('decor', pm.notices.prepDecor)
     try {
       const res = await window.isle.aiRecommendDecor(decorMood, taskId)
       if (!isCurrentSeq(seq)) return
       setNotice(res.message)
-      if (!res.ok && !res.cancelled && res.message.includes('设置')) setTab('settings')
+      if (!res.ok && !res.cancelled && res.needsSetup) setTab('settings')
     } finally {
       finishAiTask(seq)
     }
@@ -589,7 +602,7 @@ export function Panel(): JSX.Element {
       boolean
     >
     window.isle.setDecorations({ ambience, enabled })
-    setNotice(`已切换为「${label}」桌搭方案`)
+    setNotice(pm.notices.appliedPreset(label))
   }
 
   const applySettingsPatch = async (patch: SettingsPatch, msg?: string): Promise<void> => {
@@ -606,11 +619,12 @@ export function Panel(): JSX.Element {
   }
 
   const applyFocusDurations = async (nextFocus?: number, nextRest?: number): Promise<void> => {
+    const curNotices = getMessages(localeRef.current).panel.notices
     const patch: SettingsPatch = {}
     if (typeof nextFocus === 'number') {
       if (!Number.isFinite(nextFocus) || nextFocus < 1 || nextFocus > 180) {
         setFocusMinDraft(String(settings.focusMinutes ?? 25))
-        setNotice('专注时长请输入 1 ~ 180 分钟')
+        setNotice(curNotices.invalidFocusMins)
         return
       }
       patch.focusMinutes = Math.round(nextFocus)
@@ -618,7 +632,7 @@ export function Panel(): JSX.Element {
     if (typeof nextRest === 'number') {
       if (!Number.isFinite(nextRest) || nextRest < 1 || nextRest > 60) {
         setRestMinDraft(String(settings.restMinutes ?? 5))
-        setNotice('休息时长请输入 1 ~ 60 分钟')
+        setNotice(curNotices.invalidRestMins)
         return
       }
       patch.restMinutes = Math.round(nextRest)
@@ -630,11 +644,14 @@ export function Panel(): JSX.Element {
 
   const applyCopyLimitMB = async (mb: number): Promise<void> => {
     if (!Number.isFinite(mb) || mb < 64 || mb > 20480) {
-      setNotice('请输入 64 ~ 20480 MB 之间的容量上限')
+      setNotice(pm.notices.invalidCopyLimit)
       return
     }
     const clean = Math.round(mb)
-    await applySettingsPatch({ copyLimitMB: clean }, `已将副本容量上限设为 ${formatMb(clean)}`)
+    await applySettingsPatch(
+      { copyLimitMB: clean },
+      pm.notices.appliedCopyLimit(formatMb(clean))
+    )
   }
 
   const copyCount = items.filter((i) => i.isCopy).length
@@ -662,13 +679,13 @@ export function Panel(): JSX.Element {
       <header className="panel-header">
         <div className="panel-tabs">
           <button className={tab === 'dock' ? 'active' : ''} onClick={() => setTab('dock')}>
-            码头 ({items.length})
+            {pm.tabs.dock(items.length)}
           </button>
           <button className={tab === 'focus' ? 'active' : ''} onClick={() => setTab('focus')}>
-            专注 {focus.phase !== 'idle' ? '●' : ''}
+            {pm.tabs.focus} {focus.phase !== 'idle' ? '●' : ''}
           </button>
           <button className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>
-            桌搭
+            {pm.tabs.build}
           </button>
         </div>
         <div className="header-right">
@@ -677,20 +694,24 @@ export function Panel(): JSX.Element {
             onClick={async () => {
               const next = await window.isle.setPanelPinned(!pinned)
               setPinned(next)
-              setNotice(next ? '已钉住面板（切到其他窗口不会自动收起）' : '已取消钉住面板')
+              setNotice(next ? pm.header.pinnedMsg : pm.header.unpinnedMsg)
             }}
-            title={pinned ? '取消钉住（点击面板外自动收起）' : '钉住面板（切换其他窗口时保持显示）'}
+            title={pinned ? pm.header.pinnedTitle : pm.header.unpinnedTitle}
           >
             📌
           </button>
           <button
             className={`icon-btn ${tab === 'settings' ? 'active' : ''}`}
             onClick={() => setTab(tab === 'settings' ? 'dock' : 'settings')}
-            title="AI 与应用设置"
+            title={pm.header.settingsTitle}
           >
             ⚙
           </button>
-          <button className="close-btn" onClick={() => window.isle.hidePanel()} title="关闭 (Esc)">
+          <button
+            className="close-btn"
+            onClick={() => window.isle.hidePanel()}
+            title={pm.header.closeTitle}
+          >
             ✕
           </button>
         </div>
@@ -698,6 +719,7 @@ export function Panel(): JSX.Element {
 
       {tab === 'dock' && (
         <DockTab
+          locale={locale}
           items={items}
           filteredItems={filteredItems}
           groupedSections={groupedSections}
@@ -745,6 +767,7 @@ export function Panel(): JSX.Element {
 
       {tab === 'focus' && (
         <FocusTab
+          locale={locale}
           focus={focus}
           items={items}
           focusMins={focusMins}
@@ -770,6 +793,7 @@ export function Panel(): JSX.Element {
 
       {tab === 'build' && (
         <BuildTab
+          locale={locale}
           decor={decor}
           decorMood={decorMood}
           setDecorMood={setDecorMood}
@@ -782,6 +806,7 @@ export function Panel(): JSX.Element {
 
       {tab === 'settings' && (
         <SettingsTab
+          locale={locale}
           settings={settings}
           appEnv={appEnv}
           usage={usage}
@@ -808,6 +833,7 @@ export function Panel(): JSX.Element {
 
       {preview && (
         <PreviewModal
+          locale={locale}
           preview={preview}
           onClose={() => setPreview(null)}
           onCopy={onCopyItem}

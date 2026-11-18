@@ -1,7 +1,8 @@
 import type React from 'react'
+import { getMessages } from '../../../shared/i18n'
 import { getParcelKindForExt } from '../../../shared/parcelKind'
 import { DOCK_SLOTS, STAGE, isOnWater } from '../../../shared/shape'
-import type { DockItem, IslandPose } from '../../../shared/types'
+import type { AppLocale, DockItem, IslandPose } from '../../../shared/types'
 import { PARCEL_SPRITES } from './islandAssets'
 import type { DraggingParcel, ReleasingHand, SinkingParcel } from './islandMath'
 
@@ -34,6 +35,7 @@ export function GrabHandSvg({ open, className }: { open: boolean; className?: st
 }
 
 interface ParcelLayerProps {
+  locale: AppLocale
   items: DockItem[]
   effectiveMode: IslandPose['mode']
   draggingParcel: DraggingParcel | null
@@ -55,6 +57,7 @@ interface ParcelLayerProps {
 
 /** Renders visible pier parcels, hover nameplates, sea-throw hand animation, and the `+N` overflow badge. */
 export function ParcelLayer({
+  locale,
   items,
   effectiveMode,
   draggingParcel,
@@ -69,6 +72,7 @@ export function ParcelLayer({
   onThrowParcel,
   onDockOpenPanel
 }: ParcelLayerProps): JSX.Element {
+  const m = getMessages(locale).island
   const visibleParcels = items.slice(-3)
 
   return (
@@ -170,7 +174,7 @@ export function ParcelLayer({
                 }}
               >
                 <div className="parcel-nameplate-title">
-                  {unavailable ? `${it.name}（不可用）` : it.name}
+                  {unavailable ? m.parcelUnavailable(it.name) : it.name}
                 </div>
                 {it.summary?.brief && (
                   <div className="parcel-nameplate-brief">{it.summary.brief}</div>
@@ -179,7 +183,7 @@ export function ParcelLayer({
                   type="button"
                   className="parcel-throw-btn"
                   draggable={false}
-                  title="点击由小手抓起扔海里；也可直接右键按住包裹拖入海里"
+                  title={m.throwTitle}
                   onPointerDown={(e) => e.stopPropagation()}
                   onDragStart={(e) => {
                     e.preventDefault()
@@ -190,9 +194,9 @@ export function ParcelLayer({
                     onThrowParcel(parcelInfo, slot, idx)
                   }}
                 >
-                  🌊 扔海里
+                  {m.throwBtn}
                 </button>
-                <div className="parcel-nameplate-hint">左键拖出 · 右键拖海</div>
+                <div className="parcel-nameplate-hint">{m.parcelHint}</div>
               </div>
             )}
             {(isGrabbedInStage || isThrowingThis) && (
@@ -211,7 +215,7 @@ export function ParcelLayer({
                   }px)`
                 }}
               >
-                松手沉入海里移除
+                {m.seaDropTip}
               </div>
             )}
           </div>
@@ -223,11 +227,11 @@ export function ParcelLayer({
           className="dock-more-pill counter-flip"
           style={{ left: 46, top: 82 }}
           onClick={onDockOpenPanel}
-          title={`还有 ${items.length - 3} 个暂存条目：\n${items
+          title={`${m.moreTitleHeader(items.length - 3)}\n${items
             .slice(0, -3)
             .slice(-4)
             .map((it) => `• ${it.name}`)
-            .join('\n')}${items.length - 3 > 4 ? '\n…点击打开面板查看全部' : ''}`}
+            .join('\n')}${items.length - 3 > 4 ? `\n${m.moreTitleFooter}` : ''}`}
         >
           +{items.length - 3}
         </button>

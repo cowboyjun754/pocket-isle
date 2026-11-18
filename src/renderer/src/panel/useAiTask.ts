@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AiTaskKind } from '../../../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../../../shared/i18n'
+import type { AiTaskKind, AppLocale } from '../../../shared/types'
 
 export interface ActiveAiTask {
   seq: number
@@ -13,7 +14,10 @@ export interface ActiveAiTask {
  * - Shows at most one active task at a time; launching a new task invalidates previous sequence IDs;
  * - Stale completions, cancellations, or errors are dropped cleanly without leaving orphan UI state.
  */
-export function useAiTask(onNotice: (msg: string) => void): {
+export function useAiTask(
+  onNotice: (msg: string) => void,
+  locale: AppLocale = DEFAULT_LOCALE
+): {
   activeTask: ActiveAiTask | null
   aiOrganizing: boolean
   aiJointLoading: boolean
@@ -58,7 +62,7 @@ export function useAiTask(onNotice: (msg: string) => void): {
     ++reqSeqRef.current
     window.isle.cancelAi()
     setActiveTask(null)
-    onNotice('正在取消 AI 请求...')
+    onNotice(getMessages(locale).ai.progress.cancelNotice)
   }
 
   const isCurrentSeq = (seq: number): boolean => reqSeqRef.current === seq

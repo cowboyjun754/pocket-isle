@@ -1,5 +1,12 @@
+import { DEFAULT_LOCALE, getMessages } from '../../../shared/i18n'
 import { STAGE, getStageOffsetX } from '../../../shared/shape'
-import type { DecorationId, IslandPose, OtterAction, ParcelKind } from '../../../shared/types'
+import type {
+  AppLocale,
+  DecorationId,
+  IslandPose,
+  OtterAction,
+  ParcelKind
+} from '../../../shared/types'
 export { formatDurationMmSs as formatMmSs } from '../util'
 
 export interface WaterRipple {
@@ -71,12 +78,19 @@ export const AMBIENCE_NEXT = {
   rain: 'day'
 } as const
 
-export const PAT_REACTIONS: Array<{ action: OtterAction; anim: string; bubble: string }> = [
-  { action: 'wave', anim: 'react-wave', bubble: '嗨~ 摸摸头 ♪' },
-  { action: 'idle', anim: 'react-nod', bubble: '嗯嗯，我在呢!' },
-  { action: 'read', anim: 'react-hop', bubble: '看我发现了什么~' },
-  { action: 'wave', anim: 'react-wave', bubble: '点草地或建筑我都会过去玩哦~' }
-]
+export function getPatReactions(
+  locale: AppLocale = DEFAULT_LOCALE
+): Array<{ action: OtterAction; anim: string; bubble: string }> {
+  const bubbles = getMessages(locale).island.patBubbles
+  return [
+    { action: 'wave', anim: 'react-wave', bubble: bubbles[0] },
+    { action: 'idle', anim: 'react-nod', bubble: bubbles[1] },
+    { action: 'read', anim: 'react-hop', bubble: bubbles[2] },
+    { action: 'wave', anim: 'react-wave', bubble: bubbles[3] }
+  ]
+}
+
+export const PAT_REACTIONS = getPatReactions(DEFAULT_LOCALE)
 
 /** Maps viewport pointer coordinates to internal 320x240 logical stage coordinates (compensating left-edge flip). */
 export function toStageCoordsWith(

@@ -20,6 +20,7 @@ import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from '../shared/aiProvider'
+import { getMessages, resolveLocale } from '../shared/i18n'
 import {
   PANEL,
   STAGE,
@@ -38,6 +39,7 @@ import type {
   AiJointSummaryResult,
   AiOrganizeResult,
   AiTaskKind,
+  AppLocale,
   DecorationState,
   FocusStep,
   IslandMemory,
@@ -179,9 +181,14 @@ function broadcast(channel: string, ...args: unknown[]): void {
   for (const w of [island, panel]) if (w && !w.isDestroyed()) w.webContents.send(channel, ...args)
 }
 
+function currentLocale(): AppLocale {
+  return resolveLocale(store?.data?.settings?.locale)
+}
+
 function publicSettings(): Settings {
   return {
     ...store.data.settings,
+    locale: currentLocale(),
     ai: aiSecrets.toPublicAiConfig(store.data.settings.ai)
   }
 }
@@ -309,7 +316,7 @@ function createIsland(): void {
     hasShadow: false,
     alwaysOnTop: store.data.settings.alwaysOnTop,
     show: false,
-    title: '停靠岛',
+    title: getMessages(currentLocale()).appName,
     webPreferences: webPrefs()
   })
   island.setIgnoreMouseEvents(true, { forward: true })
@@ -480,7 +487,7 @@ function createPanel(): void {
     skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
-    title: '停靠岛',
+    title: getMessages(currentLocale()).appName,
     webPreferences: webPrefs()
   })
   panel.on('blur', () => {
@@ -595,25 +602,26 @@ function togglePanel(): void {
 function rebuildTrayMenu(): void {
   if (!tray) return
   const s = store.data.settings
+  const t = getMessages(currentLocale()).tray
   const side = currentSide()
   const menu = Menu.buildFromTemplate([
-    { label: island?.isVisible() ? '隐藏小岛' : '显示小岛', click: toggleIsland },
-    { label: '打开操作面板', click: () => (island?.isVisible() || showIsland(), showPanel()) },
+    { label: island?.isVisible() ? t.hideIsland : t.showIsland, click: toggleIsland },
+    { label: t.openPanel, click: () => (island?.isVisible() || showIsland(), showPanel()) },
     { type: 'separator' },
     {
-      label: '停靠在右边缘',
+      label: t.dockRight,
       type: 'radio',
       checked: side === 'right',
       click: () => (resetPosition('right'), showIsland())
     },
     {
-      label: '停靠在左边缘',
+      label: t.dockLeft,
       type: 'radio',
       checked: side === 'left',
       click: () => (resetPosition('left'), showIsland())
     },
     {
-      label: '窗口置顶',
+      label: t.alwaysOnTop,
       type: 'checkbox',
       checked: s.alwaysOnTop,
       click: (item) => {
@@ -623,7 +631,7 @@ function rebuildTrayMenu(): void {
       }
     },
     {
-      label: app.isPackaged ? '开机自启' : '开机自启（打包后可用）',
+      label: app.isPackaged ? t.openAtLoginReady : t.openAtLoginPackagedOnly,
       type: 'checkbox',
       enabled: app.isPackaged,
       checked: s.openAtLogin,
@@ -633,10 +641,10 @@ function rebuildTrayMenu(): void {
         broadcast('settings:changed', publicSettings())
       }
     },
-    { label: '打开数据目录', click: () => shell.openPath(app.getPath('userData')) },
+    { label: t.openDataDir, click: () => shell.openPath(app.getPath('userData')) },
     { type: 'separator' },
     {
-      label: '退出',
+      label: t.quit,
       click: () => {
         quitting = true
         app.quit()
@@ -648,7 +656,7 @@ function rebuildTrayMenu(): void {
 
 function createTray(): void {
   tray = new Tray(makeTrayIcon())
-  tray.setToolTip('停靠岛')
+  tray.setToolTip(getMessages(currentLocale()).tray.tooltip)
   tray.on('click', toggleIsland)
   rebuildTrayMenu()
 }
@@ -708,18 +716,20 @@ function registerIpc(): void {
   })
 
   handleTrusted('dock:pasteClipboard', async (): Promise<AddResult> => {
+    const loc = currentLocale()
+    const cm = getMessages(loc).clipboard
     const imgPng = await readClipboardImagePng()
     let r: AddResult
     if (imgPng) {
-      const name = buildClipboardFilename('image')
+      const name = buildClipboardFilename('image', undefined, new Date(), loc)
       r = await dock.addBufferItem(name, imgPng, 'clipboard://image')
     } else {
       const text = await clipboard.readText().catch(() => '')
       if (text.trim()) {
-        const name = buildClipboardFilename('text', text)
+        const name = buildClipboardFilename('text', text, new Date(), loc)
         r = await dock.addBufferItem(name, Buffer.from(text, 'utf8'), 'clipboard://text')
       } else {
-        r = { added: 0, skipped: 0, errors: ['剪贴板里没有可暂存的截图或文本'] }
+        r = { added: 0, skipped: 0, errors: [cm.emptyClipboard] }
       }
     }
     if (r.added > 0) {
@@ -760,18 +770,19 @@ function registerIpc(): void {
   })
 
   handleTrusted('dock:open', async (_e, id: unknown) => {
+    const mm = getMessages(currentLocale()).main
     const it = typeof id === 'string' ? dock.find(id) : undefined
-    if (!it) return '条目不存在'
-    if (!existsSync(it.path)) return '文件不存在或已被移动'
+    if (!it) return mm.itemNotFound
+    if (!existsSync(it.path)) return mm.fileMissingOrMoved
     const ext = (it.ext || extname(it.path).slice(1)).toLowerCase()
     if (!it.isDir && EXECUTABLE_EXTS.has(ext)) {
       const owner = panel && !panel.isDestroyed() && panel.isVisible() ? panel : island
       const opts: Electron.MessageBoxOptions = {
         type: 'warning',
-        title: '安全确认 · 打开可执行文件',
-        message: `「${it.name}」属于可执行程序或脚本文件`,
-        detail: '直接运行可执行文件存在安全风险。建议先「在文件夹中查看」，确认无误后再运行。',
-        buttons: ['在文件夹中查看', '取消', '仍然运行'],
+        title: mm.execTitle,
+        message: mm.execMessage(it.name),
+        detail: mm.execDetail,
+        buttons: mm.execButtons,
         defaultId: 0,
         cancelId: 1,
         noLink: true
@@ -830,22 +841,24 @@ function registerIpc(): void {
   })
 
   handleTrusted('dock:readTextPreview', async (_e, id: unknown) => {
+    const mm = getMessages(currentLocale()).main
     const it = typeof id === 'string' ? dock.find(id) : undefined
-    if (!it) return { ok: false, message: '条目不存在' }
+    if (!it) return { ok: false, message: mm.itemNotFound }
     if (it.isDir || it.ext === 'dir' || !TEXT_EXTS.has(it.ext)) {
-      return { ok: false, message: '当前仅支持纯文本与代码文件预览' }
+      return { ok: false, message: mm.textPreviewOnly }
     }
     try {
       const { content, truncated } = await readTextFilePreview(it.path, 64 * 1024)
       return { ok: true, content, truncated }
     } catch {
-      return { ok: false, message: '无法读取文件内容，原文件可能已移动' }
+      return { ok: false, message: mm.readPreviewFailed }
     }
   })
 
   handleTrusted('dock:copyToClipboard', async (_e, id: unknown) => {
+    const msg = getMessages(currentLocale())
     const it = typeof id === 'string' ? dock.find(id) : undefined
-    if (!it) return { ok: false, message: '条目不存在' }
+    if (!it) return { ok: false, message: msg.main.itemNotFound }
     if (!it.isDir && IMAGE_EXTS.has(it.ext)) {
       try {
         const img = nativeImage.createFromPath(it.path)
@@ -856,7 +869,7 @@ function registerIpc(): void {
               'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' })
             })
           ])
-          return { ok: true, message: `已复制图片到剪贴板：${it.name}` }
+          return { ok: true, message: msg.clipboard.copiedImage(it.name) }
         }
       } catch {
         /* Fall back to path copy when image read/write fails */
@@ -868,7 +881,9 @@ function registerIpc(): void {
         await clipboard.writeText(content)
         return {
           ok: true,
-          message: truncated ? `已复制前 256 KB 文本：${it.name}` : `已复制文本内容：${it.name}`
+          message: truncated
+            ? msg.clipboard.copiedTextTruncated(it.name)
+            : msg.clipboard.copiedText(it.name)
         }
       } catch {
         /* Fall back to path copy when text read fails */
@@ -876,9 +891,9 @@ function registerIpc(): void {
     }
     try {
       await clipboard.writeText(it.path)
-      return { ok: true, message: `已复制路径：${it.name}` }
+      return { ok: true, message: msg.clipboard.copiedPath(it.name) }
     } catch {
-      return { ok: false, message: `写入剪贴板失败：${it.name}` }
+      return { ok: false, message: msg.clipboard.copyFailed(it.name) }
     }
   })
 
@@ -962,6 +977,12 @@ function registerIpc(): void {
     if (res.openAtLoginChanged) {
       app.setLoginItemSettings({ openAtLogin: res.next.openAtLogin })
     }
+    if (res.localeChanged) {
+      const m = getMessages(res.next.locale)
+      island?.setTitle(m.appName)
+      panel?.setTitle(m.appName)
+      tray?.setToolTip(m.tray.tooltip)
+    }
     if (typeof rawPatch?.focusMinutes === 'number') {
       focusCtrl.syncIdleDuration()
     }
@@ -981,8 +1002,9 @@ function registerIpc(): void {
     aiSecrets.getKeyStatus(typeof baseUrl === 'string' ? baseUrl : '')
   )
   handleTrusted('ai:saveConfig', (_e, rawCfg: AiConfigInput) => {
+    const loc = currentLocale()
     const baseUrl = String(rawCfg?.baseUrl ?? '').trim() || DEFAULT_AI_BASE_URL
-    const v = validateAiEndpointUrl(baseUrl)
+    const v = validateAiEndpointUrl(baseUrl, loc)
     if (!v.ok) {
       return { ok: false, message: v.message }
     }
@@ -1003,12 +1025,13 @@ function registerIpc(): void {
     broadcast('settings:changed', publicSettings())
     return persisted
       ? { ok: true }
-      : { ok: true, message: '配置已保存（当前系统加密不可用，密钥仅保留在本次会话内存中）' }
+      : { ok: true, message: getMessages(loc).main.saveMemoryOnly }
   })
   handleTrusted('ai:test', (_e, rawCfg: AiConfigInput) => {
+    const loc = currentLocale()
     const resolved = aiSecrets.resolveForInput(rawCfg ?? { baseUrl: '', model: '' })
     if (!resolved.ok) return { ok: false, message: resolved.message }
-    return testConnection(resolved.cfg)
+    return testConnection(resolved.cfg, loc)
   })
 
   const beginAiSignal = (): AbortController => {
@@ -1052,26 +1075,35 @@ function registerIpc(): void {
     if (activeAiAbort) {
       activeAiAbort.abort()
       activeAiAbort = null
-      emitOtterReaction({ action: 'idle', bubble: '好哒，先停下休息会儿~', durationMs: 1600 })
+      emitOtterReaction({
+        action: 'idle',
+        bubble: getMessages(currentLocale()).ai.progress.cancelBubble,
+        durationMs: 1600
+      })
     }
   })
 
   handleTrusted(
     'ai:organize',
     async (_e, ids?: string[], taskId?: unknown): Promise<AiOrganizeResult> => {
+      const loc = currentLocale()
+      const p = getMessages(loc).ai.progress
       const ctrl = beginAiSignal()
       try {
         const resolved = aiSecrets.resolveForSavedSettings()
-        if (!resolved.ok) return { ok: false, message: resolved.message }
+        if (!resolved.ok) {
+          return { ok: false, message: resolved.message, needsSetup: resolved.needsSetup }
+        }
         const targetIds = Array.isArray(ids) ? new Set(strArr(ids)) : null
         const targets = targetIds ? dock.items.filter((i) => targetIds.has(i.id)) : dock.items
-        if (!targets.length) return { ok: false, message: '没有可整理的文件' }
+        if (!targets.length) return { ok: false, message: p.emptyOrganize }
 
-        emitOtterReaction({ action: 'read', bubble: '正在读资料整理中...', durationMs: 6000 })
+        emitOtterReaction({ action: 'read', bubble: p.readOrganizeBubble, durationMs: 6000 })
         const extracted = await extractFilesBatch(targets, {
           maxChars: 2400,
           concurrency: 2,
           enableVision: resolved.cfg.enableVision,
+          locale: loc,
           encodeImage: visionEncoder,
           extractTextItem: extractTextInWorker,
           signal: ctrl.signal,
@@ -1079,23 +1111,28 @@ function registerIpc(): void {
             emitAiProgress(
               taskId,
               'organize',
-              `正在解析 (${Math.min(done + 1, total)}/${total})：${currentName}`
+              p.parsingItem(Math.min(done + 1, total), total, currentName)
             )
         })
         if (ctrl.signal.aborted) {
-          return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
+          return { ok: false, cancelled: true, message: p.cancelledOrganize }
         }
-        emitAiProgress(taskId, 'organize', '水獭正在归纳分组与生成要点…')
-        const { result, updates } = await organizeAndSummarize(resolved.cfg, extracted, ctrl.signal)
+        emitAiProgress(taskId, 'organize', p.organizingStage)
+        const { result, updates } = await organizeAndSummarize(
+          resolved.cfg,
+          extracted,
+          ctrl.signal,
+          loc
+        )
         if (ctrl.signal.aborted) {
-          return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
+          return { ok: false, cancelled: true, message: p.cancelledOrganize }
         }
         if (result.ok) {
           await dock.applyAiUpdates(updates)
           broadcast('dock:changed')
           emitOtterReaction({
             action: 'wave',
-            bubble: result.otterBubble || '整理好啦~',
+            bubble: result.otterBubble || p.organizeDoneBubble,
             durationMs: 3600
           })
         } else {
@@ -1104,10 +1141,15 @@ function registerIpc(): void {
         return result
       } catch (err) {
         if (ctrl.signal.aborted || isAbortError(err)) {
-          return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
+          return { ok: false, cancelled: true, message: p.cancelledOrganize }
         }
         emitOtterReaction({ action: 'idle' })
-        return { ok: false, message: (err as Error).message || 'AI 整理失败' }
+        const needsSetup = !!(err as { needsSetup?: boolean })?.needsSetup
+        return {
+          ok: false,
+          ...(needsSetup ? { needsSetup: true } : {}),
+          message: (err as Error).message || p.failedOrganize
+        }
       } finally {
         endAiSignal(ctrl)
       }
@@ -1122,20 +1164,25 @@ function registerIpc(): void {
       focusPrompt?: unknown,
       taskId?: unknown
     ): Promise<AiJointSummaryResult> => {
+      const loc = currentLocale()
+      const p = getMessages(loc).ai.progress
       const ctrl = beginAiSignal()
       try {
         const resolved = aiSecrets.resolveForSavedSettings()
-        if (!resolved.ok) return { ok: false, message: resolved.message }
+        if (!resolved.ok) {
+          return { ok: false, message: resolved.message, needsSetup: resolved.needsSetup }
+        }
         const idList = strArr(ids).slice(0, 6)
         const targets = dock.items.filter((i) => idList.includes(i.id))
         if (targets.length < 2) {
-          return { ok: false, message: '请选中 2～6 个文件进行联合速览' }
+          return { ok: false, message: p.needTwoJoint }
         }
-        emitOtterReaction({ action: 'read', bubble: '正在帮你串读几份资料...', durationMs: 6500 })
+        emitOtterReaction({ action: 'read', bubble: p.readJointBubble, durationMs: 6500 })
         const extracted = await extractFilesBatch(targets, {
           maxChars: 1600,
           concurrency: 2,
           enableVision: resolved.cfg.enableVision,
+          locale: loc,
           encodeImage: visionEncoder,
           extractTextItem: extractTextInWorker,
           signal: ctrl.signal,
@@ -1143,26 +1190,27 @@ function registerIpc(): void {
             emitAiProgress(
               taskId,
               'joint',
-              `正在读取 (${Math.min(done + 1, total)}/${total})：${currentName}`
+              p.readingItem(Math.min(done + 1, total), total, currentName)
             )
         })
         if (ctrl.signal.aborted) {
-          return { ok: false, cancelled: true, message: '已取消本次联合速览' }
+          return { ok: false, cancelled: true, message: p.cancelledJoint }
         }
-        emitAiProgress(taskId, 'joint', '水獭正在串读并对比生成联合速览…')
+        emitAiProgress(taskId, 'joint', p.jointStage)
         const res = await summarizeDocumentsTogether(
           resolved.cfg,
           extracted,
           typeof focusPrompt === 'string' ? focusPrompt : undefined,
-          ctrl.signal
+          ctrl.signal,
+          loc
         )
         if (ctrl.signal.aborted) {
-          return { ok: false, cancelled: true, message: '已取消本次联合速览' }
+          return { ok: false, cancelled: true, message: p.cancelledJoint }
         }
         if (res.ok) {
           emitOtterReaction({
             action: 'wave',
-            bubble: res.otterBubble || '联合速览生成好啦~',
+            bubble: res.otterBubble || p.jointDoneBubble,
             durationMs: 3600
           })
         } else {
@@ -1171,10 +1219,15 @@ function registerIpc(): void {
         return res
       } catch (err) {
         if (ctrl.signal.aborted || isAbortError(err)) {
-          return { ok: false, cancelled: true, message: '已取消本次联合速览' }
+          return { ok: false, cancelled: true, message: p.cancelledJoint }
         }
         emitOtterReaction({ action: 'idle' })
-        return { ok: false, message: (err as Error).message || 'AI 联合速览失败' }
+        const needsSetup = !!(err as { needsSetup?: boolean })?.needsSetup
+        return {
+          ok: false,
+          ...(needsSetup ? { needsSetup: true } : {}),
+          message: (err as Error).message || p.failedJoint
+        }
       } finally {
         endAiSignal(ctrl)
       }
@@ -1190,56 +1243,67 @@ function registerIpc(): void {
       durationMinutes?: number,
       taskId?: unknown
     ): Promise<AiBreakdownResult> => {
+      const loc = currentLocale()
+      const p = getMessages(loc).ai.progress
       const ctrl = beginAiSignal()
       try {
         const resolved = aiSecrets.resolveForSavedSettings()
-        if (!resolved.ok) return { ok: false, message: resolved.message }
+        if (!resolved.ok) {
+          return { ok: false, message: resolved.message, needsSetup: resolved.needsSetup }
+        }
         const idSet = new Set(Array.isArray(docIds) ? docIds : [])
         const docs = dock.items.filter((i) => idSet.has(i.id))
-        emitOtterReaction({ action: 'read', bubble: '帮你想想这轮怎么做...', durationMs: 5000 })
+        emitOtterReaction({ action: 'read', bubble: p.breakdownBubble, durationMs: 5000 })
         const extracted = await extractFilesBatch(docs, {
           maxChars: 1000,
           concurrency: 2,
           enableVision: false,
+          locale: loc,
           extractTextItem: extractTextInWorker,
           signal: ctrl.signal,
           onProgress: (done, total, currentName) =>
             emitAiProgress(
               taskId,
               'breakdown',
-              `正在读取资料 (${Math.min(done + 1, total)}/${total})：${currentName}`
+              p.readingDocItem(Math.min(done + 1, total), total, currentName)
             )
         })
         if (ctrl.signal.aborted) {
-          return { ok: false, cancelled: true, message: '已取消本次 AI 拆解' }
+          return { ok: false, cancelled: true, message: p.cancelledBreakdown }
         }
         const mins =
           typeof durationMinutes === 'number'
             ? durationMinutes
             : (store.data.settings.focusMinutes ?? 25)
-        emitAiProgress(taskId, 'breakdown', `水獭正在拆解 ${mins} 分钟可执行步骤…`)
+        emitAiProgress(taskId, 'breakdown', p.breakdownStage(mins))
         const res = await breakdownFocusGoal(
           resolved.cfg,
           String(goal || ''),
           extracted,
           ctrl.signal,
-          mins
+          mins,
+          loc
         )
         if (ctrl.signal.aborted) {
-          return { ok: false, cancelled: true, message: '已取消本次 AI 拆解' }
+          return { ok: false, cancelled: true, message: p.cancelledBreakdown }
         }
         emitOtterReaction({
           action: 'wave',
-          bubble: res.otterBubble || '步骤拆好啦！',
+          bubble: res.otterBubble || p.breakdownDoneBubble,
           durationMs: 3500
         })
         return res
       } catch (err) {
         if (ctrl.signal.aborted || isAbortError(err)) {
-          return { ok: false, cancelled: true, message: '已取消本次 AI 拆解' }
+          return { ok: false, cancelled: true, message: p.cancelledBreakdown }
         }
         emitOtterReaction({ action: 'idle' })
-        return { ok: false, message: (err as Error).message || 'AI 拆解失败' }
+        const needsSetup = !!(err as { needsSetup?: boolean })?.needsSetup
+        return {
+          ok: false,
+          ...(needsSetup ? { needsSetup: true } : {}),
+          message: (err as Error).message || p.failedBreakdown
+        }
       } finally {
         endAiSignal(ctrl)
       }
@@ -1247,14 +1311,23 @@ function registerIpc(): void {
   )
 
   handleTrusted('ai:recommendDecor', async (_e, moodPrompt?: string, taskId?: unknown) => {
+    const loc = currentLocale()
+    const p = getMessages(loc).ai.progress
     const ctrl = beginAiSignal()
     try {
       const resolved = aiSecrets.resolveForSavedSettings()
-      if (!resolved.ok) return { ok: false, message: resolved.message }
-      emitAiProgress(taskId, 'decor', '水獭正在挑选中意的桌搭方案…')
-      const rec = await recommendDecoration(resolved.cfg, String(moodPrompt || ''), ctrl.signal)
+      if (!resolved.ok) {
+        return { ok: false, message: resolved.message, needsSetup: resolved.needsSetup }
+      }
+      emitAiProgress(taskId, 'decor', p.decorStage)
+      const rec = await recommendDecoration(
+        resolved.cfg,
+        String(moodPrompt || ''),
+        ctrl.signal,
+        loc
+      )
       if (ctrl.signal.aborted) {
-        return { ok: false, cancelled: true, message: '已取消本次搭配推荐' }
+        return { ok: false, cancelled: true, message: p.cancelledDecor }
       }
       store.update((d) => {
         d.decorations = rec.state
@@ -1267,9 +1340,14 @@ function registerIpc(): void {
       return { ok: true, message: rec.reason }
     } catch (err) {
       if (ctrl.signal.aborted || isAbortError(err)) {
-        return { ok: false, cancelled: true, message: '已取消本次搭配推荐' }
+        return { ok: false, cancelled: true, message: p.cancelledDecor }
       }
-      return { ok: false, message: (err as Error).message || '推荐布置失败' }
+      const needsSetup = !!(err as { needsSetup?: boolean })?.needsSetup
+      return {
+        ok: false,
+        ...(needsSetup ? { needsSetup: true } : {}),
+        message: (err as Error).message || p.failedDecor
+      }
     } finally {
       endAiSignal(ctrl)
     }
@@ -1437,14 +1515,15 @@ app.whenReady().then(() => {
       if (panel && !panel.isDestroyed() && panel.isVisible()) {
         emitOtterReaction({ action: 'idle', bubble: msg, durationMs: 4000 }, true)
       }
-    }
+    },
+    getLocale: currentLocale
   })
   const safeCodec: SecretCodec = {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
     encrypt: (plain: string) => safeStorage.encryptString(plain).toString('base64'),
     decrypt: (cipher: string) => safeStorage.decryptString(Buffer.from(cipher, 'base64'))
   }
-  aiSecrets = new AiCredentialStore(store, safeCodec)
+  aiSecrets = new AiCredentialStore(store, safeCodec, currentLocale)
   aiSecrets.migrateLegacyKey()
   dock = new Dock(
     store,
@@ -1453,7 +1532,8 @@ app.whenReady().then(() => {
     join(userData, 'drop-log.txt'),
     {
       enableDropLog: process.env.POCKET_ISLE_DROP_LOG === '1',
-      onUndoChanged: (u) => broadcast('dock:undoChanged', u)
+      onUndoChanged: (u) => broadcast('dock:undoChanged', u),
+      getLocale: currentLocale
     }
   )
   void dock.reconcileCopies()
@@ -1464,16 +1544,15 @@ app.whenReady().then(() => {
     (finishedPhase) => {
       broadcast('focus:finished', finishedPhase)
       if (store.data.settings.focusNotify !== false && Notification.isSupported()) {
+        const nm = getMessages(currentLocale()).notifications
         new Notification({
-          title: finishedPhase === 'focus' ? '停靠岛 · 专注完成' : '停靠岛 · 休息完毕',
-          body:
-            finishedPhase === 'focus'
-              ? '本轮专注时间到啦，喝口水歇一会儿吧~'
-              : '精力恢复得不错，随时开启下一轮专注！',
+          title: finishedPhase === 'focus' ? nm.focusDoneTitle : nm.restDoneTitle,
+          body: finishedPhase === 'focus' ? nm.focusDoneBody : nm.restDoneBody,
           silent: true
         }).show()
       }
-    }
+    },
+    currentLocale
   )
 
   registerIpc()
@@ -1498,7 +1577,7 @@ app.whenReady().then(() => {
   })
 
   if (!globalShortcut.register(SHORTCUT, toggleIsland)) {
-    console.warn(`[shortcut] ${SHORTCUT} 被占用，请使用托盘菜单`)
+    console.warn(`[shortcut] ${SHORTCUT} is already registered; use the system tray menu instead`)
   }
 
   const fixPos = (): void => {

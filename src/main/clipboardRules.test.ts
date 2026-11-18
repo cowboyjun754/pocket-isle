@@ -14,4 +14,13 @@ describe('buildClipboardFilename', () => {
     )
     expect(buildClipboardFilename('text', '   \n***   ', fixed)).toBe('便签_20261117_191205.txt')
   })
+
+  it('supports English screenshot and note filename prefixes', () => {
+    expect(buildClipboardFilename('image', undefined, fixed, 'en')).toBe(
+      'Screenshot_20261117_191205.png'
+    )
+    expect(buildClipboardFilename('text', 'Meeting Agenda', fixed, 'en')).toBe(
+      'Note_Meeting Agenda_191205.txt'
+    )
+  })
 })

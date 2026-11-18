@@ -1,4 +1,5 @@
-import type { AiFileReadReceipt, DecorationId, DockItem } from '../../../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../../../shared/i18n'
+import type { AiFileReadReceipt, AppLocale, DecorationId, DockItem } from '../../../shared/types'
 
 export type Tab = 'dock' | 'focus' | 'build' | 'settings'
 
@@ -16,14 +17,29 @@ export interface JointCardState {
   receipts?: AiFileReadReceipt[]
 }
 
-export const DECO_META: Array<{ id: DecorationId; name: string; icon: string; desc: string }> = [
-  { id: 'flowers', name: '野花丛', icon: '🌷', desc: '岸边轻摇的暖色小花' },
-  { id: 'bench', name: '木长椅', icon: '🪑', desc: '面朝海面的发呆座位' },
-  { id: 'lamp', name: '小路灯', icon: '🏮', desc: '夜晚亮起温暖鹅黄光晕' },
-  { id: 'tree', name: '圆冠树', icon: '🌳', desc: '随海风轻微摆动的绿荫' },
-  { id: 'cabin', name: '小木屋', icon: '🏡', desc: '水獭的温馨木头小屋' },
-  { id: 'windmill', name: '小风车', icon: '🎐', desc: '山坡上的木叶风车' }
-]
+const DECO_IDS: DecorationId[] = ['flowers', 'bench', 'lamp', 'tree', 'cabin', 'windmill']
+const DECO_ICONS: Record<DecorationId, string> = {
+  flowers: '🌷',
+  bench: '🪑',
+  lamp: '🏮',
+  tree: '🌳',
+  cabin: '🏡',
+  windmill: '🎐'
+}
+
+export function getDecoMeta(
+  locale: AppLocale = DEFAULT_LOCALE
+): Array<{ id: DecorationId; name: string; icon: string; desc: string }> {
+  const meta = getMessages(locale).panel.build.decoMeta
+  return DECO_IDS.map((id) => ({
+    id,
+    icon: DECO_ICONS[id],
+    name: meta[id].name,
+    desc: meta[id].desc
+  }))
+}
+
+export const DECO_META = getDecoMeta(DEFAULT_LOCALE)
 
 export function playFocusChime(): void {
   try {

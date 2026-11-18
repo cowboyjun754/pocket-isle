@@ -67,4 +67,21 @@ describe('applySettingsPatch', () => {
 
     expect(applySettingsPatch(BASE, { focusNotify: false }, false).next.focusNotify).toBe(false)
   })
+
+  it('validates supported locale updates and tracks localeChanged', () => {
+    const toEn = applySettingsPatch(BASE, { locale: 'en' }, false)
+    expect(toEn.next.locale).toBe('en')
+    expect(toEn.localeChanged).toBe(true)
+
+    const sameEn = applySettingsPatch(toEn.next, { locale: 'en' }, false)
+    expect(sameEn.localeChanged).toBe(false)
+
+    const toZh = applySettingsPatch(toEn.next, { locale: 'zh-CN' }, false)
+    expect(toZh.next.locale).toBe('zh-CN')
+    expect(toZh.localeChanged).toBe(true)
+
+    const invalid = applySettingsPatch(BASE, { locale: 'es' as never }, false)
+    expect(invalid.next.locale).toBe('zh-CN')
+    expect(invalid.localeChanged).toBe(false)
+  })
 })

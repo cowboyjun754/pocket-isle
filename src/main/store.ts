@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from '../shared/aiProvider'
+import { DEFAULT_LOCALE, getMessages, resolveLocale } from '../shared/i18n'
 import type { DockSide } from '../shared/shape'
 import type {
+  AppLocale,
   DecorationState,
   DockItem,
   FocusState,
@@ -63,6 +65,7 @@ const DEFAULT_SETTINGS: Settings = {
   focusMinutes: 25,
   restMinutes: 5,
   focusNotify: true,
+  locale: DEFAULT_LOCALE,
   ai: {
     baseUrl: DEFAULT_AI_BASE_URL,
     model: DEFAULT_AI_MODEL,
@@ -109,12 +112,17 @@ export class Store {
   private dirty = false
   private lastSaveError: string | null = null
   private onSaveError?: (msg: string) => void
+  private getLocale: () => AppLocale
   private legacyAiKey: { baseUrl: string; apiKey: string } | null = null
 
-  constructor(dir: string, opts?: { onSaveError?: (msg: string) => void }) {
+  constructor(
+    dir: string,
+    opts?: { onSaveError?: (msg: string) => void; getLocale?: () => AppLocale }
+  ) {
     mkdirSync(dir, { recursive: true })
     this.file = join(dir, 'data.json')
     this.onSaveError = opts?.onSaveError
+    this.getLocale = opts?.getLocale ?? (() => DEFAULT_LOCALE)
     this.data = this.load()
   }
 
@@ -182,13 +190,18 @@ export class Store {
         mergedSettings.restMinutes = restMin
         mergedSettings.focusNotify =
           typeof mergedSettings.focusNotify === 'boolean' ? mergedSettings.focusNotify : true
+        mergedSettings.locale = resolveLocale(mergedSettings.locale)
+        const activeLocale = mergedSettings.locale
         const focusPhase = savedFocus.phase ?? 'idle'
         const focusMs = focusMin * 60 * 1000
         const safeItems: DockItem[] = Array.isArray(raw.items)
           ? raw.items
               .filter((it): it is DockItem => !!it && typeof it === 'object' && typeof it.id === 'string' && typeof it.path === 'string')
               .map((it) => {
-                const summary = sanitizeFileSummary((it as unknown as { summary?: unknown }).summary)
+                const summary = sanitizeFileSummary(
+                  (it as unknown as { summary?: unknown }).summary,
+                  activeLocale
+                )
                 const { summary: _old, available: _avail, ...rest } = it as DockItem & {
                   summary?: unknown
                 }
@@ -278,13 +291,14 @@ export class Store {
       this.lastSaveError = null
       return true
     } catch (err) {
-      const msg = (err as Error)?.message || '写入配置失败'
+      const m = getMessages(this.data?.settings?.locale ?? this.getLocale())
+      const msg = (err as Error)?.message || m.main.storeWriteFailed
       const firstFail = this.lastSaveError === null
       this.lastSaveError = msg
       this.dirty = true
       console.error('[store] saveNow failed', err)
       if (firstFail) {
-        this.onSaveError?.(`本地数据保存失败，稍后将自动重试（${msg}）`)
+        this.onSaveError?.(m.main.storeSaveError(msg))
       }
       this.retryTimer = setTimeout(() => {
         this.retryTimer = null

@@ -851,6 +851,16 @@
   cursor: default;
 }
 
+.toggle-row.is-static {
+  cursor: default;
+}
+
+.lang-switch-btns {
+  margin-top: 0;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
 .toggle-row input[type='checkbox'] {
   width: 16px;
   height: 16px;

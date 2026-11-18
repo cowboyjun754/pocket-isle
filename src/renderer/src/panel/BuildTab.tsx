@@ -1,7 +1,9 @@
-import type { AmbienceMode, DecorationId, DecorationState } from '../../../shared/types'
-import { DECO_META, SparkleIcon } from './panelShared'
+import { getMessages } from '../../../shared/i18n'
+import type { AmbienceMode, AppLocale, DecorationId, DecorationState } from '../../../shared/types'
+import { SparkleIcon, getDecoMeta } from './panelShared'
 
 interface BuildTabProps {
+  locale: AppLocale
   decor: DecorationState
   decorMood: string
   setDecorMood: (val: string) => void
@@ -12,6 +14,7 @@ interface BuildTabProps {
 }
 
 export function BuildTab({
+  locale,
   decor,
   decorMood,
   setDecorMood,
@@ -20,60 +23,68 @@ export function BuildTab({
   onAiDecor,
   onCancelAi
 }: BuildTabProps): JSX.Element {
+  const bm = getMessages(locale).panel.build
+  const decoList = getDecoMeta(locale)
   return (
     <div className="tab-body">
       <div className="ambience-bar">
         <div>
-          <div className="section-label">小岛氛围与预设方案</div>
+          <div className="section-label">{bm.sectionTitle}</div>
           <div className="preset-btns">
             <button
               className={decor.ambience === 'day' ? 'active' : ''}
               onClick={() => window.isle.setDecorations({ ambience: 'day' })}
             >
-              ☀ 白天日光
+              {bm.dayBtn}
             </button>
             <button
               className={decor.ambience === 'night' ? 'active' : ''}
               onClick={() => window.isle.setDecorations({ ambience: 'night' })}
             >
-              🌙 夜晚暖光
+              {bm.nightBtn}
             </button>
             <button
               className={decor.ambience === 'rain' ? 'active' : ''}
               onClick={() => window.isle.setDecorations({ ambience: 'rain' })}
             >
-              🌧 细雨听海
+              {bm.rainBtn}
             </button>
-            <button onClick={() => onApplyPreset('day', ['flowers', 'bench', 'tree'], '清爽办公')}>
-              清爽办公
+            <button
+              onClick={() => onApplyPreset('day', ['flowers', 'bench', 'tree'], bm.presetFresh)}
+            >
+              {bm.presetFresh}
             </button>
             <button
               onClick={() =>
                 onApplyPreset(
                   'day',
                   ['flowers', 'bench', 'lamp', 'tree', 'cabin', 'windmill'],
-                  '田园满岛'
+                  bm.presetPastoral
                 )
               }
             >
-              田园满岛
+              {bm.presetPastoral}
             </button>
             <button
-              onClick={() => onApplyPreset('night', ['bench', 'lamp', 'tree', 'cabin'], '静谧夜读')}
+              onClick={() =>
+                onApplyPreset('night', ['bench', 'lamp', 'tree', 'cabin'], bm.presetNight)
+              }
             >
-              静谧夜读
+              {bm.presetNight}
             </button>
             <button
-              onClick={() => onApplyPreset('rain', ['bench', 'lamp', 'tree', 'cabin'], '细雨听书')}
+              onClick={() =>
+                onApplyPreset('rain', ['bench', 'lamp', 'tree', 'cabin'], bm.presetRain)
+              }
             >
-              细雨听书
+              {bm.presetRain}
             </button>
           </div>
         </div>
       </div>
 
       <div className="deco-grid">
-        {DECO_META.map((d) => {
+        {decoList.map((d) => {
           const on = decor.enabled[d.id]
           return (
             <div
@@ -90,7 +101,9 @@ export function BuildTab({
                 <div className="deco-name">{d.name}</div>
                 <div className="deco-desc">{d.desc}</div>
               </div>
-              <div className={`deco-switch ${on ? 'on' : ''}`}>{on ? '显示中' : '已收起'}</div>
+              <div className={`deco-switch ${on ? 'on' : ''}`}>
+                {on ? bm.decoVisible : bm.decoHidden}
+              </div>
             </div>
           )
         })}
@@ -99,7 +112,7 @@ export function BuildTab({
       <div className="ai-decor-box">
         <input
           value={decorMood}
-          placeholder="输入心情让水獭推荐搭配（如：适合深夜安静写代码）"
+          placeholder={bm.moodPlaceholder}
           onChange={(e) => setDecorMood(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') onAiDecor()
@@ -107,21 +120,37 @@ export function BuildTab({
         />
         <button className="btn-ai-pill" disabled={aiDecorating} onClick={onAiDecor}>
           <SparkleIcon />
-          <span>{aiDecorating ? '搭配中...' : 'AI 推荐布置'}</span>
+          <span>{aiDecorating ? bm.decorLoadingBtn : bm.decorBtn}</span>
         </button>
         {aiDecorating && (
           <button className="btn-cancel-ai" onClick={onCancelAi}>
-            取消
+            {bm.cancelBtn}
           </button>
         )}
       </div>
 
       <div className="relax-tips-card">
-        <strong>🌊 岛上丰富互动（展开小岛时直接点景物即可触发）：</strong>
+        <strong>{bm.tipsTitle}</strong>
         <span>
-          · 点<strong>草地任意处</strong>：长出小雏菊并召唤水獭跑过去 · 点<strong>木长椅</strong>：水獭去坐下吹风
-          <br />· 点<strong>圆冠树</strong>：摇落绿叶 · 点<strong>野花丛</strong>：飞出蝴蝶 · 点<strong>小木屋</strong>：炊烟与暖窗
-          <br />· 点<strong>野餐茶席</strong>：水獭喝茶吃点心 · 点<strong>海水 / 小纸船</strong>：泛起涟漪与放漂纸船
+          {bm.tipsLine1A}
+          <strong>{bm.tipsGrass}</strong>
+          {bm.tipsLine1B}
+          <strong>{bm.tipsBench}</strong>
+          {bm.tipsLine1C}
+          <br />
+          {bm.tipsLine2A}
+          <strong>{bm.tipsTree}</strong>
+          {bm.tipsLine2B}
+          <strong>{bm.tipsFlowers}</strong>
+          {bm.tipsLine2C}
+          <strong>{bm.tipsCabin}</strong>
+          {bm.tipsLine2D}
+          <br />
+          {bm.tipsLine3A}
+          <strong>{bm.tipsPicnic}</strong>
+          {bm.tipsLine3B}
+          <strong>{bm.tipsSeaBoat}</strong>
+          {bm.tipsLine3C}
         </span>
       </div>
     </div>

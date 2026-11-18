@@ -1,5 +1,6 @@
 import type { Worker } from 'node:worker_threads'
-import type { DockItem } from '../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../shared/i18n'
+import type { AppLocale, DockItem } from '../shared/types'
 import type { WorkerExtractRequest, WorkerExtractResponse } from './extractWorker'
 import createExtractWorker from './extractWorker?nodeWorker'
 import type { ExtractedDoc } from './fileExtractor'
@@ -7,6 +8,7 @@ import type { ExtractedDoc } from './fileExtractor'
 interface PendingReq {
   resolve: (doc: ExtractedDoc) => void
   reject: (err: Error) => void
+  locale: AppLocale
 }
 
 let worker: Worker | null = null
@@ -41,7 +43,7 @@ function ensureWorker(): Worker {
     if (msg.doc) {
       entry.resolve(msg.doc)
     } else {
-      entry.reject(new Error(msg.error || '文件提取失败'))
+      entry.reject(new Error(msg.error || getMessages(entry.locale).main.workerExtractFailed))
     }
   })
   w.on('error', (err) => {
@@ -49,7 +51,8 @@ function ensureWorker(): Worker {
   })
   w.on('exit', (code) => {
     if (worker === w) {
-      resetWorkerWithError(new Error(`提取工作线程异常退出 (${code})`))
+      const firstLocale = pending.values().next().value?.locale ?? DEFAULT_LOCALE
+      resetWorkerWithError(new Error(getMessages(firstLocale).main.workerExitError(code)))
     }
   })
   worker = w
@@ -63,7 +66,8 @@ function ensureWorker(): Worker {
 export function extractTextInWorker(
   item: DockItem,
   maxChars: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  locale: AppLocale = DEFAULT_LOCALE
 ): Promise<ExtractedDoc> {
   if (signal?.aborted) {
     return Promise.reject(makeAbortError())
@@ -88,6 +92,7 @@ export function extractTextInWorker(
     }
 
     pending.set(reqId, {
+      locale,
       resolve: (doc) => {
         cleanupSignal()
         resolve(doc)
@@ -98,7 +103,7 @@ export function extractTextInWorker(
       }
     })
 
-    const req: WorkerExtractRequest = { reqId, item, maxChars }
+    const req: WorkerExtractRequest = { reqId, item, maxChars, locale }
     w.postMessage(req)
   })
 }

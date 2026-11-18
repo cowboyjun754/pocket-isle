@@ -116,5 +116,33 @@ describe('AiCredentialStore & validateAiEndpointUrl', () => {
     expect(validateAiEndpointUrl('https://api.openai.com/v1').ok).toBe(true)
     expect(validateAiEndpointUrl('http://localhost:11434/v1').ok).toBe(true)
     expect(validateAiEndpointUrl('http://127.0.0.1:1234/v1').ok).toBe(true)
+
+    const enErr = validateAiEndpointUrl('http://api.openai.com/v1', 'en')
+    expect(enErr.ok).toBe(false)
+    if (!enErr.ok) {
+      expect(enErr.message).toContain('HTTPS')
+    }
+  })
+
+  it('returns localized missing-key setup error with needsSetup flag', () => {
+    const dir = makeTempDir('pocket-isle-en-secret-')
+    const store = new Store(dir)
+    let activeLocale: 'zh-CN' | 'en' = 'en'
+    const secrets = new AiCredentialStore(store, mockCodec, () => activeLocale)
+
+    const missingEn = secrets.resolveForSavedSettings()
+    expect(missingEn.ok).toBe(false)
+    if (!missingEn.ok) {
+      expect(missingEn.needsSetup).toBe(true)
+      expect(missingEn.message).toContain('API Key')
+    }
+
+    activeLocale = 'zh-CN'
+    const missingZh = secrets.resolveForSavedSettings()
+    expect(missingZh.ok).toBe(false)
+    if (!missingZh.ok) {
+      expect(missingZh.needsSetup).toBe(true)
+      expect(missingZh.message).toContain('API Key')
+    }
   })
 })

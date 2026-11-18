@@ -1,7 +1,15 @@
 import { randomUUID } from 'crypto'
 import { existsSync, promises as fs, rmSync } from 'fs'
 import { basename, dirname, extname, join, resolve, sep } from 'path'
-import type { AddResult, DockItem, DockUndoState, FileSummary, UndoResult } from '../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../shared/i18n'
+import type {
+  AddResult,
+  AppLocale,
+  DockItem,
+  DockUndoState,
+  FileSummary,
+  UndoResult
+} from '../shared/types'
 import { samePath, shouldCopy } from './pathRules'
 import type { Store } from './store'
 
@@ -10,6 +18,7 @@ export interface DockOptions {
   onUndoChanged?: (state: DockUndoState | null) => void
   enableDropLog?: boolean
   removeDir?: (dir: string) => Promise<void>
+  getLocale?: () => AppLocale
 }
 
 interface UndoEntry {
@@ -38,6 +47,7 @@ export class Dock {
   private enableDropLog: boolean
   private removeDirImpl: (dir: string) => Promise<void>
   private onUndoChanged?: (state: DockUndoState | null) => void
+  private getLocale: () => AppLocale
 
   constructor(
     private store: Store,
@@ -51,6 +61,7 @@ export class Dock {
     this.removeDirImpl =
       opts?.removeDir ?? ((dir: string) => fs.rm(dir, { recursive: true, force: true }))
     this.onUndoChanged = opts?.onUndoChanged
+    this.getLocale = opts?.getLocale ?? (() => DEFAULT_LOCALE)
   }
 
   get items(): DockItem[] {
@@ -153,17 +164,18 @@ export class Dock {
 
   async add(paths: string[]): Promise<AddResult> {
     return this.serialize(async () => {
+      const m = getMessages(this.getLocale()).dockService
       const result: AddResult = { added: 0, skipped: 0, errors: [] }
       for (const raw of paths) {
         if (!raw) {
-          result.errors.push('有一项不是磁盘上的文件，无法暂存')
+          result.errors.push(m.notDiskFile)
           continue
         }
         let st: Awaited<ReturnType<typeof fs.stat>>
         try {
           st = await fs.stat(raw)
         } catch {
-          result.errors.push(`无法读取：${basename(raw)}`)
+          result.errors.push(m.unreadable(basename(raw)))
           continue
         }
         const isDir = st.isDirectory()
@@ -187,9 +199,7 @@ export class Dock {
         if (copy) {
           const reserved = await this.reserveQuotaForCopy(st.size)
           if (!reserved) {
-            result.errors.push(
-              `副本空间不足（上限 ${this.store.data.settings.copyLimitMB} MB）：${name}`
-            )
+            result.errors.push(m.quotaExceeded(this.store.data.settings.copyLimitMB, name))
             continue
           }
           const dir = join(this.copiesRoot, id)
@@ -199,7 +209,7 @@ export class Dock {
             await fs.copyFile(raw, usePath)
           } catch {
             await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
-            result.errors.push(`复制失败：${name}`)
+            result.errors.push(m.copyFailed(name))
             continue
           } finally {
             this.releaseQuota(st.size)
@@ -228,13 +238,14 @@ export class Dock {
 
   /** Saves an in-memory buffer (e.g., clipboard screenshot or text snippet) as a dock copy. */
   async addBufferItem(name: string, buf: Buffer, sourcePath: string): Promise<AddResult> {
+    const m = getMessages(this.getLocale()).dockService
     return this.serialize(async () => {
       const reserved = await this.reserveQuotaForCopy(buf.length)
       if (!reserved) {
         return {
           added: 0,
           skipped: 0,
-          errors: [`副本空间不足（上限 ${this.store.data.settings.copyLimitMB} MB）：${name}`]
+          errors: [m.quotaExceeded(this.store.data.settings.copyLimitMB, name)]
         }
       }
       const id = randomUUID()
@@ -245,7 +256,7 @@ export class Dock {
         await fs.writeFile(filePath, buf)
       } catch {
         await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
-        return { added: 0, skipped: 0, errors: [`保存剪贴板内容失败：${name}`] }
+        return { added: 0, skipped: 0, errors: [m.saveClipFailed(name)] }
       } finally {
         this.releaseQuota(buf.length)
       }
@@ -284,10 +295,11 @@ export class Dock {
 
       const token = randomUUID()
       const copyCount = removedEntries.filter((e) => e.item.isCopy).length
+      const m = getMessages(this.getLocale()).dockService
       const label =
         removedEntries.length === 1
           ? removedEntries[0].item.name
-          : `${removedEntries.length} 个条目`
+          : m.multiUndoLabel(removedEntries.length)
       const timer = setTimeout(() => {
         void this.serialize(() => this.expireUndoBatch(token))
       }, this.undoTtlMs)
@@ -312,9 +324,10 @@ export class Dock {
 
   async undoRemove(token?: string): Promise<UndoResult> {
     return this.serialize(async () => {
+      const m = getMessages(this.getLocale()).dockService
       const batch = this.undoBatch
       if (!batch || (token && batch.token !== token)) {
-        return { ok: false, restored: 0, message: '撤销时间已过或没有可恢复的移除记录' }
+        return { ok: false, restored: 0, message: m.undoExpired }
       }
       if (batch.timer) clearTimeout(batch.timer)
       this.undoBatch = null
@@ -345,8 +358,8 @@ export class Dock {
 
       this.emitUndoState()
       return restored > 0
-        ? { ok: true, restored, message: `已撤销移除，恢复 ${restored} 项到码头` }
-        : { ok: false, restored: 0, message: '未能恢复文件（副本可能已失效）' }
+        ? { ok: true, restored, message: m.undoRestored(restored) }
+        : { ok: false, restored: 0, message: m.undoUnavailable }
     })
   }
 

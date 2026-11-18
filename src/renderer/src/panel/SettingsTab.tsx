@@ -1,10 +1,19 @@
 import type { MutableRefObject } from 'react'
-import { AI_PRESETS } from '../../../shared/aiProvider'
-import type { AiConfig, AiKeyStatus, AppEnv, Settings, SettingsPatch } from '../../../shared/types'
+import { getAiPresets } from '../../../shared/aiProvider'
+import { getMessages } from '../../../shared/i18n'
+import type {
+  AiConfig,
+  AiKeyStatus,
+  AppEnv,
+  AppLocale,
+  Settings,
+  SettingsPatch
+} from '../../../shared/types'
 import { formatSize } from '../util'
 import { formatMb } from './panelShared'
 
 interface SettingsTabProps {
+  locale: AppLocale
   settings: Settings
   appEnv: AppEnv
   usage: { used: number; limit: number }
@@ -28,6 +37,7 @@ interface SettingsTabProps {
 
 export function SettingsTab(props: SettingsTabProps): JSX.Element {
   const {
+    locale,
     settings,
     appEnv,
     usage,
@@ -49,15 +59,51 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
     onNotice
   } = props
 
+  const sm = getMessages(locale).panel.settings
+  const presets = getAiPresets(locale)
+
   return (
     <div className="tab-body">
       <div className="settings-card">
-        <div className="section-label">通用与停靠设置</div>
+        <div className="section-label">{sm.generalTitle}</div>
+
+        <div className="toggle-row is-static">
+          <div>
+            <div className="toggle-title">{sm.languageTitle}</div>
+            <div className="toggle-desc">{sm.languageDesc}</div>
+          </div>
+          <div className="preset-btns lang-switch-btns">
+            <button
+              type="button"
+              className={locale === 'zh-CN' ? 'active' : ''}
+              onClick={() =>
+                onApplySettingsPatch(
+                  { locale: 'zh-CN' },
+                  getMessages('zh-CN').panel.settings.languageSwitchedZh
+                )
+              }
+            >
+              简体中文
+            </button>
+            <button
+              type="button"
+              className={locale === 'en' ? 'active' : ''}
+              onClick={() =>
+                onApplySettingsPatch(
+                  { locale: 'en' },
+                  getMessages('en').panel.settings.languageSwitchedEn
+                )
+              }
+            >
+              English
+            </button>
+          </div>
+        </div>
 
         <label className="toggle-row">
           <div>
-            <div className="toggle-title">窗口始终置顶</div>
-            <div className="toggle-desc">让小岛浮窗保持在其他桌面应用前方（同步系统托盘）</div>
+            <div className="toggle-title">{sm.alwaysOnTopTitle}</div>
+            <div className="toggle-desc">{sm.alwaysOnTopDesc}</div>
           </div>
           <input
             type="checkbox"
@@ -65,7 +111,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
             onChange={(e) =>
               onApplySettingsPatch(
                 { alwaysOnTop: e.target.checked },
-                e.target.checked ? '已开启小岛置顶' : '已取消小岛置顶'
+                e.target.checked ? sm.alwaysOnTopOn : sm.alwaysOnTopOff
               )
             }
           />
@@ -74,9 +120,10 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
         <label className={`toggle-row ${!appEnv.isPackaged ? 'is-disabled' : ''}`}>
           <div>
             <div className="toggle-title">
-              开机自动启动 {!appEnv.isPackaged && <span className="pill-muted">打包后可用</span>}
+              {sm.openAtLoginTitle}{' '}
+              {!appEnv.isPackaged && <span className="pill-muted">{sm.packagedOnlyBadge}</span>}
             </div>
-            <div className="toggle-desc">登录 Windows 时自动在后台启动停靠岛</div>
+            <div className="toggle-desc">{sm.openAtLoginDesc}</div>
           </div>
           <input
             type="checkbox"
@@ -85,7 +132,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
             onChange={(e) =>
               onApplySettingsPatch(
                 { openAtLogin: e.target.checked },
-                e.target.checked ? '已开启开机自启' : '已关闭开机自启'
+                e.target.checked ? sm.openAtLoginOn : sm.openAtLoginOff
               )
             }
           />
@@ -93,8 +140,8 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
 
         <label className="toggle-row">
           <div>
-            <div className="toggle-title">专注与休息结束轻柔提醒</div>
-            <div className="toggle-desc">计时结束时播送轻柔三音铃声并弹出系统桌面通知</div>
+            <div className="toggle-title">{sm.focusNotifyTitle}</div>
+            <div className="toggle-desc">{sm.focusNotifyDesc}</div>
           </div>
           <input
             type="checkbox"
@@ -102,7 +149,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
             onChange={(e) =>
               onApplySettingsPatch(
                 { focusNotify: e.target.checked },
-                e.target.checked ? '已开启专注结束轻柔提醒' : '已静音专注结束提醒'
+                e.target.checked ? sm.focusNotifyOn : sm.focusNotifyOff
               )
             }
           />
@@ -110,9 +157,9 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
 
         <div className="copy-limit-box">
           <div className="copy-limit-head">
-            <span className="toggle-title">临时目录副本容量上限</span>
+            <span className="toggle-title">{sm.copyLimitTitle}</span>
             <span className="copy-usage-text">
-              已用 {formatSize(usage.used)} / {formatMb(settings.copyLimitMB)}
+              {sm.copyUsageText(formatSize(usage.used), formatMb(settings.copyLimitMB))}
             </span>
           </div>
           <div className="usage-bar-track">
@@ -149,7 +196,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
                 }}
               />
               <span>MB</span>
-              <button onClick={() => onApplyCopyLimitMB(Number(copyLimitDraft))}>应用</button>
+              <button onClick={() => onApplyCopyLimitMB(Number(copyLimitDraft))}>{sm.applyBtn}</button>
             </div>
           </div>
         </div>
@@ -158,33 +205,33 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
           <button
             onClick={() => {
               window.isle.resetPosition('left')
-              onNotice('小岛已停靠至屏幕左边缘')
+              onNotice(sm.dockLeftMsg)
             }}
           >
-            停靠左边缘
+            {sm.dockLeftBtn}
           </button>
           <button
             onClick={() => {
               window.isle.resetPosition('right')
-              onNotice('小岛已停靠至屏幕右边缘')
+              onNotice(sm.dockRightMsg)
             }}
           >
-            停靠右边缘
+            {sm.dockRightBtn}
           </button>
-          <button onClick={() => window.isle.openDataDir()}>打开数据目录</button>
-          <span className="shortcut-hint" title="全局显隐快捷键">
-            快捷键：{appEnv.shortcut.replace('Control+', 'Ctrl+')}
+          <button onClick={() => window.isle.openDataDir()}>{sm.openDataDirBtn}</button>
+          <span className="shortcut-hint" title={sm.shortcutTitle}>
+            {sm.shortcutText(appEnv.shortcut.replace('Control+', 'Ctrl+'))}
           </span>
         </div>
       </div>
 
       <div className="settings-card">
-        <div className="section-label">AI 水獭搭档接口配置（分源加密保存在本地，不写入日志）</div>
+        <div className="section-label">{sm.aiSectionTitle}</div>
         <div className="preset-btns">
-          <span>快速填入模板：</span>
-          {AI_PRESETS.map((p) => (
+          <span>{sm.presetsLabel}</span>
+          {presets.map((p) => (
             <button
-              key={p.label}
+              key={p.baseUrl}
               onClick={() => {
                 aiDirtyRef.current = true
                 setAiCfg((prev) => ({ ...prev, baseUrl: p.baseUrl, model: p.model }))
@@ -199,7 +246,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
         </div>
 
         <label className="field-label">
-          <span>接口地址 (Base URL，兼容 OpenAI `/v1/chat/completions`)</span>
+          <span>{sm.baseUrlLabel}</span>
           <input
             value={aiCfg.baseUrl}
             placeholder="https://api.deepseek.com/v1"
@@ -213,7 +260,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
         </label>
 
         <label className="field-label">
-          <span>模型名称 (Model)</span>
+          <span>{sm.modelLabel}</span>
           <input
             value={aiCfg.model}
             placeholder="deepseek-chat / qwen-plus / gpt-4o-mini"
@@ -226,19 +273,19 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
 
         <label className="field-label">
           <div className="key-label-row">
-            <span>API 密钥（按服务源独立加密保管）</span>
+            <span>{sm.apiKeyLabel}</span>
             <span className="key-origin-badge">
               {originKeyStatus.valid
                 ? `${originKeyStatus.origin} · ${
                     clearSavedKey
-                      ? '待清除'
+                      ? sm.keyPendingClear
                       : originKeyStatus.hasApiKey
-                        ? '已存密钥'
+                        ? sm.keySaved
                         : originKeyStatus.requiresKey
-                          ? '未设密钥'
-                          : '本地免密'
+                          ? sm.keyMissing
+                          : sm.keyLocalOptional
                   }`
-                : originKeyStatus.message || '地址格式无效'}
+                : originKeyStatus.message || sm.keyInvalidUrl}
             </span>
             {originKeyStatus.hasApiKey && !clearSavedKey && (
               <button
@@ -250,7 +297,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
                   setClearSavedKey(true)
                 }}
               >
-                清除该源密钥
+                {sm.clearKeyBtn}
               </button>
             )}
             {clearSavedKey && (
@@ -259,7 +306,7 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
                 className="key-clear-btn"
                 onClick={() => setClearSavedKey(false)}
               >
-                恢复沿用
+                {sm.restoreKeyBtn}
               </button>
             )}
           </div>
@@ -268,10 +315,10 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
             value={apiKeyDraft}
             placeholder={
               !originKeyStatus.requiresKey
-                ? '本地模型可留空（仅本次输入时发送）'
+                ? sm.keyPlaceholderOptional
                 : originKeyStatus.hasApiKey && !clearSavedKey
-                  ? '••••••••（已加密保存，留空沿用，输入新密钥可替换）'
-                  : 'sk-...（仅对当前服务源加密保存）'
+                  ? sm.keyPlaceholderSaved
+                  : sm.keyPlaceholderEmpty
             }
             onChange={(e) => {
               aiDirtyRef.current = true
@@ -283,10 +330,8 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
 
         <label className="toggle-row">
           <div>
-            <div className="toggle-title">启用截图 / 图片识别（Vision 多模态）</div>
-            <div className="toggle-desc">
-              开启后整理或联合速览时将图片压缩后发给模型读图（需模型支持视觉，如 gpt-4o-mini / qwen-vl）
-            </div>
+            <div className="toggle-title">{sm.visionTitle}</div>
+            <div className="toggle-desc">{sm.visionDesc}</div>
           </div>
           <input
             type="checkbox"
@@ -310,17 +355,17 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
                 clearApiKey: clearSavedKey
               })
               if (!res.ok) {
-                onNotice(res.message || '保存 AI 配置失败')
+                onNotice(res.message || sm.saveFailed)
                 return
               }
               aiDirtyRef.current = false
               setApiKeyDraft('')
               setClearSavedKey(false)
               onSyncOriginKeyStatus(aiCfg.baseUrl)
-              onNotice(res.message || '已保存 AI 配置')
+              onNotice(res.message || sm.saveSuccess)
             }}
           >
-            保存配置
+            {sm.saveBtn}
           </button>
           <button
             disabled={testingAi}
@@ -334,22 +379,16 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
                   apiKey: apiKeyDraft,
                   clearApiKey: clearSavedKey
                 })
-                onNotice(
-                  res.ok
-                    ? `${res.message}（测试不会自动覆写配置，如需生效请点「保存配置」）`
-                    : res.message
-                )
+                onNotice(res.ok ? `${res.message}${sm.testTipSuffix}` : res.message)
               } finally {
                 setTestingAi(false)
               }
             }}
           >
-            {testingAi ? '测试中...' : '测试连接'}
+            {testingAi ? sm.testingBtn : sm.testBtn}
           </button>
         </div>
-        <div className="settings-note">
-          未配置密钥或网络异常时，文件中转、自由桌搭、减压互动与专注计时仍可正常离线使用。
-        </div>
+        <div className="settings-note">{sm.offlineNote}</div>
       </div>
     </div>
   )

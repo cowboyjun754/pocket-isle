@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import { inflateRawSync, inflateSync } from 'zlib'
-import type { DockItem } from '../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../shared/i18n'
+import type { AppLocale, DockItem } from '../shared/types'
 
 export const TEXT_EXTS = new Set([
   'txt',
@@ -112,7 +113,8 @@ function stripXmlText(xml: string, breakTagPattern: RegExp): string {
 
 export function extractXlsxPreview(
   entries: Map<string, string>,
-  maxChars: number
+  maxChars: number,
+  locale: AppLocale = DEFAULT_LOCALE
 ): { text: string; truncated: boolean; reason?: string } {
   const sharedStringsXml = entries.get('xl/sharedStrings.xml')
   const sharedStrings: string[] = []
@@ -198,10 +200,11 @@ export function extractXlsxPreview(
   const text = out.join('\n\n').trim()
   if (text.length > maxChars) truncatedByChars = true
   const truncated = truncatedByRows || truncatedByChars
+  const m = getMessages(locale).extractor
   let reason: string | undefined
-  if (truncatedByRows && truncatedByChars) reason = '仅读取每个工作表前 40 行且已按长度截断'
-  else if (truncatedByRows) reason = '仅读取每个工作表前 40 行'
-  else if (truncatedByChars) reason = '表格内容较长，仅读取前段预览'
+  if (truncatedByRows && truncatedByChars) reason = m.xlsxTruncatedRowsAndChars
+  else if (truncatedByRows) reason = m.xlsxTruncatedRows
+  else if (truncatedByChars) reason = m.xlsxTruncatedChars
   return { text, truncated, reason }
 }
 
@@ -539,7 +542,12 @@ export function extractPdfText(buf: Buffer): string {
 /**
  * Pure-Node text / Office / PDF / folder snippet extractor (zero Electron dependency; safe for worker threads).
  */
-export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promise<ExtractedDoc> {
+export async function extractDocTextOnly(
+  item: DockItem,
+  maxChars = 2400,
+  locale: AppLocale = DEFAULT_LOCALE
+): Promise<ExtractedDoc> {
+  const m = getMessages(locale).extractor
   const base: ExtractedDoc = {
     id: item.id,
     name: item.name,
@@ -552,13 +560,15 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
     if (item.isDir || item.ext === 'dir') {
       const entries = await fs.readdir(item.path, { withFileTypes: true })
       const visible = entries.filter((e) => !e.name.startsWith('.')).slice(0, 30)
-      const list = visible.map((e) => `${e.isDirectory() ? '[目录]' : '[文件]'} ${e.name}`).join('\n')
-      base.snippet = `文件夹内容（共 ${entries.length} 项）：\n${list}`.slice(0, maxChars)
+      const list = visible
+        .map((e) => `${e.isDirectory() ? m.dirPrefix : m.filePrefix} ${e.name}`)
+        .join('\n')
+      base.snippet = m.folderListing(entries.length, list).slice(0, maxChars)
       base.readStatus = 'partial'
       base.readNote =
         entries.length > 30 || base.snippet.length >= maxChars
-          ? `仅列出前 ${visible.length} 个子项名称（共 ${entries.length} 项，未读取子文件正文）`
-          : '仅列出目录内文件名（未读取子文件正文）'
+          ? m.folderPartialCount(visible.length, entries.length)
+          : m.folderPartialAll
       return base
     }
 
@@ -568,9 +578,9 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
         base.snippet = content.slice(0, maxChars)
         const isPartial = truncated || content.length > maxChars
         base.readStatus = isPartial ? 'partial' : 'full'
-        if (isPartial) base.readNote = '文件较长，仅读取前段正文'
+        if (isPartial) base.readNote = m.textTruncated
       } else {
-        base.readNote = '文件内容为空'
+        base.readNote = m.textEmpty
       }
       return base
     }
@@ -578,7 +588,7 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
     if (item.ext === 'docx') {
       const st = await fs.stat(item.path)
       if (st.size > MAX_OFFICE_INPUT_BYTES) {
-        base.readNote = '文档体积超出解析上限，仅凭文件名与属性识别'
+        base.readNote = m.docxTooLarge
         return base
       }
       const buf = await fs.readFile(item.path)
@@ -589,18 +599,18 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
           base.snippet = text.slice(0, maxChars)
           const isPartial = text.length > maxChars
           base.readStatus = isPartial ? 'partial' : 'full'
-          if (isPartial) base.readNote = '文档内容较长，仅读取前段正文'
+          if (isPartial) base.readNote = m.docxTruncated
           return base
         }
       }
-      base.readNote = '未能读取文档正文（文件可能受加密或超出解析上限）'
+      base.readNote = m.docxFailed
       return base
     }
 
     if (item.ext === 'pptx') {
       const st = await fs.stat(item.path)
       if (st.size > MAX_OFFICE_INPUT_BYTES) {
-        base.readNote = '演示文稿体积超出解析上限，仅凭文件名与属性识别'
+        base.readNote = m.pptxTooLarge
         return base
       }
       const buf = await fs.readFile(item.path)
@@ -632,9 +642,9 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
         base.snippet = joined.slice(0, maxChars)
         const isPartial = truncatedSlides || joined.length > maxChars
         base.readStatus = isPartial ? 'partial' : 'full'
-        if (isPartial) base.readNote = '幻灯片较多，仅读取前几页文字'
+        if (isPartial) base.readNote = m.pptxTruncated
       } else {
-        base.readNote = '未能提取幻灯片文字'
+        base.readNote = m.pptxFailed
       }
       return base
     }
@@ -642,7 +652,7 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
     if (item.ext === 'xlsx') {
       const st = await fs.stat(item.path)
       if (st.size > MAX_OFFICE_INPUT_BYTES) {
-        base.readNote = '表格文件体积超出解析上限，仅凭文件名与属性识别'
+        base.readNote = m.xlsxTooLarge
         return base
       }
       const buf = await fs.readFile(item.path)
@@ -653,14 +663,14 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
           n === 'xl/workbook.xml' ||
           /^xl\/worksheets\/sheet\d+\.xml$/i.test(n)
       )
-      const preview = extractXlsxPreview(entries, maxChars)
+      const preview = extractXlsxPreview(entries, maxChars, locale)
       if (preview.text) {
         base.snippet = preview.text.slice(0, maxChars)
         const isPartial = preview.truncated || preview.text.length > maxChars
         base.readStatus = isPartial ? 'partial' : 'full'
-        if (isPartial) base.readNote = preview.reason || '表格内容较长，仅读取前段预览'
+        if (isPartial) base.readNote = preview.reason || m.xlsxTruncatedChars
       } else {
-        base.readNote = '未能读取表格单元内容'
+        base.readNote = m.xlsxFailed
       }
       return base
     }
@@ -668,7 +678,7 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
     if (item.ext === 'pdf') {
       const st = await fs.stat(item.path)
       if (st.size > MAX_PDF_INPUT_BYTES) {
-        base.readNote = 'PDF 体积超出 12 MB 解析上限，仅凭文件名与属性识别'
+        base.readNote = m.pdfTooLarge
         return base
       }
       const buf = await fs.readFile(item.path)
@@ -677,20 +687,18 @@ export async function extractDocTextOnly(item: DockItem, maxChars = 2400): Promi
         base.snippet = pdfRes.text.slice(0, maxChars)
         const isPartial = pdfRes.truncated || pdfRes.text.length > maxChars
         base.readStatus = isPartial ? 'partial' : 'full'
-        if (isPartial) base.readNote = 'PDF 内容较长，仅读取前段正文'
+        if (isPartial) base.readNote = m.pdfTruncated
       } else {
-        base.readNote = pdfRes.hasImages
-          ? '纯扫描件或图片型 PDF，未能识别正文文字'
-          : '未能从 PDF 提取可读文字（可能为扫描件、加密或特殊编码）'
+        base.readNote = pdfRes.hasImages ? m.pdfScanned : m.pdfUnreadable
       }
       return base
     }
 
     if (!IMAGE_EXTS.has(item.ext)) {
-      base.readNote = '暂不支持解析该格式正文，仅凭文件名与属性识别'
+      base.readNote = m.unsupportedFormat
     }
   } catch {
-    base.readNote = '读取文件失败，原文件可能已移动或无访问权限'
+    base.readNote = m.readFailed
   }
   return base
 }

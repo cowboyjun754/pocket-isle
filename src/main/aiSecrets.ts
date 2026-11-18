@@ -4,7 +4,8 @@ import {
   isLoopbackHost,
   normalizeInputAiUrl
 } from '../shared/aiProvider'
-import type { AiConfig, AiConfigInput, AiKeyStatus } from '../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../shared/i18n'
+import type { AiConfig, AiConfigInput, AiKeyStatus, AppLocale } from '../shared/types'
 import type { Store } from './store'
 
 export interface EffectiveAiConfig {
@@ -33,24 +34,28 @@ export type EndpointValidation =
       message: string
     }
 
-export function validateAiEndpointUrl(rawBaseUrl: string): EndpointValidation {
+export function validateAiEndpointUrl(
+  rawBaseUrl: string,
+  locale: AppLocale = DEFAULT_LOCALE
+): EndpointValidation {
+  const m = getMessages(locale).secrets
   const normalized = normalizeInputAiUrl(rawBaseUrl || DEFAULT_AI_BASE_URL)
   let u: URL
   try {
     u = new URL(normalized)
   } catch {
-    return { ok: false, message: '接口地址格式无效，请检查 Base URL' }
+    return { ok: false, message: m.invalidUrl }
   }
 
   if (u.protocol !== 'https:' && u.protocol !== 'http:') {
-    return { ok: false, message: '接口地址仅支持 HTTPS 或本地 HTTP 协议' }
+    return { ok: false, message: m.protocolOnly }
   }
 
   const isLocal = isLoopbackHost(u.hostname)
   if (u.protocol === 'http:' && !isLocal) {
     return {
       ok: false,
-      message: '远程接口请使用 HTTPS 加密连接（仅 localhost / 127.0.0.1 本地模型允许 HTTP）'
+      message: m.remoteHttpsRequired
     }
   }
 
@@ -77,11 +82,15 @@ export function normalizeAiOrigin(rawBaseUrl: string): string | null {
  */
 export class AiCredentialStore {
   private memoryOnly = new Map<string, string>()
+  private getLocale: () => AppLocale
 
   constructor(
     private store: Store,
-    private codec: SecretCodec
-  ) {}
+    private codec: SecretCodec,
+    getLocale?: () => AppLocale
+  ) {
+    this.getLocale = getLocale ?? (() => DEFAULT_LOCALE)
+  }
 
   migrateLegacyKey(): boolean {
     const legacy = this.store.consumeLegacyAiKey()
@@ -147,7 +156,7 @@ export class AiCredentialStore {
   }
 
   getKeyStatus(baseUrl: string): AiKeyStatus {
-    const v = validateAiEndpointUrl(baseUrl)
+    const v = validateAiEndpointUrl(baseUrl, this.getLocale())
     if (!v.ok) {
       return {
         origin: '',
@@ -176,7 +185,9 @@ export class AiCredentialStore {
     }
   }
 
-  resolveForSavedSettings(): { ok: true; cfg: EffectiveAiConfig } | { ok: false; message: string } {
+  resolveForSavedSettings():
+    | { ok: true; cfg: EffectiveAiConfig }
+    | { ok: false; needsSetup: boolean; message: string } {
     const ai = this.store.data.settings.ai
     return this.resolveForInput({
       baseUrl: ai.baseUrl,
@@ -187,10 +198,13 @@ export class AiCredentialStore {
 
   resolveForInput(
     input: AiConfigInput
-  ): { ok: true; cfg: EffectiveAiConfig; origin: string } | { ok: false; message: string } {
+  ):
+    | { ok: true; cfg: EffectiveAiConfig; origin: string }
+    | { ok: false; needsSetup: boolean; message: string } {
+    const locale = this.getLocale()
     const rawBase = String(input.baseUrl ?? '').trim() || DEFAULT_AI_BASE_URL
-    const v = validateAiEndpointUrl(rawBase)
-    if (!v.ok) return v
+    const v = validateAiEndpointUrl(rawBase, locale)
+    if (!v.ok) return { ok: false, needsSetup: true, message: v.message }
 
     const explicit = typeof input.apiKey === 'string' ? input.apiKey.trim() : ''
     const resolvedKey = input.clearApiKey ? '' : explicit || this.getKey(rawBase)
@@ -198,7 +212,8 @@ export class AiCredentialStore {
     if (v.requiresKey && !resolvedKey) {
       return {
         ok: false,
-        message: '请先填写当前服务商的 API Key（本地模型如 Ollama 可留空）'
+        needsSetup: true,
+        message: getMessages(locale).secrets.missingApiKey
       }
     }
 

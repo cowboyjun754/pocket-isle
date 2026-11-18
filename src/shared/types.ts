@@ -6,6 +6,7 @@ export type DecorationId = 'flowers' | 'bench' | 'lamp' | 'tree' | 'cabin' | 'wi
 export type OtterAction = 'idle' | 'receive' | 'read' | 'wave' | 'rest'
 export type AmbienceMode = 'day' | 'night' | 'rain'
 export type ParcelKind = 'envelope' | 'box' | 'scroll'
+export type AppLocale = 'zh-CN' | 'en'
 
 export interface FileSummary {
   brief: string
@@ -125,13 +126,21 @@ export interface Settings {
   restMinutes?: number
   /** Play sound & desktop notification on focus/rest completion */
   focusNotify?: boolean
+  /** Interface language ('zh-CN' | 'en') */
+  locale?: AppLocale
   ai: AiConfig
 }
 
 export type SettingsPatch = Partial<
   Pick<
     Settings,
-    'alwaysOnTop' | 'openAtLogin' | 'copyLimitMB' | 'focusMinutes' | 'restMinutes' | 'focusNotify'
+    | 'alwaysOnTop'
+    | 'openAtLogin'
+    | 'copyLimitMB'
+    | 'focusMinutes'
+    | 'restMinutes'
+    | 'focusNotify'
+    | 'locale'
   >
 >
 
@@ -161,6 +170,7 @@ export interface OtterReactionPayload {
 export interface AiOrganizeResult {
   ok: boolean
   cancelled?: boolean
+  needsSetup?: boolean
   message: string
   otterBubble?: string
 }
@@ -168,6 +178,7 @@ export interface AiOrganizeResult {
 export interface AiBreakdownResult {
   ok: boolean
   cancelled?: boolean
+  needsSetup?: boolean
   message: string
   refinedGoal?: string
   steps?: string[]
@@ -193,6 +204,7 @@ export interface AiFileReadReceipt {
 export interface AiJointSummaryResult {
   ok: boolean
   cancelled?: boolean
+  needsSetup?: boolean
   message: string
   title?: string
   markdown?: string
@@ -264,7 +276,7 @@ export interface IsleApi {
   aiRecommendDecor(
     moodPrompt?: string,
     taskId?: string
-  ): Promise<{ ok: boolean; cancelled?: boolean; message: string }>
+  ): Promise<{ ok: boolean; cancelled?: boolean; needsSetup?: boolean; message: string }>
   cancelAi(): void
 
   // Event subscriptions

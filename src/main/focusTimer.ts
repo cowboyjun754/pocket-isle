@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import type { FocusState, FocusStep, OtterReactionPayload } from '../shared/types'
+import { DEFAULT_LOCALE, getMessages } from '../shared/i18n'
+import type { AppLocale, FocusState, FocusStep, OtterReactionPayload } from '../shared/types'
 import type { Store } from './store'
 
 const DEFAULT_FOCUS_MIN = 25
@@ -18,12 +19,17 @@ export class FocusController {
   private lastTickAt = 0
   private lastCheckpointAt = 0
 
+  private getLocale: () => AppLocale
+
   constructor(
     private store: Store,
     private onUpdate: (state: FocusState) => void,
     private onOtter: (react: OtterReactionPayload) => void,
-    private onFinished?: (phase: 'focus' | 'rest') => void
-  ) {}
+    private onFinished?: (phase: 'focus' | 'rest') => void,
+    getLocale?: () => AppLocale
+  ) {
+    this.getLocale = getLocale ?? (() => DEFAULT_LOCALE)
+  }
 
   private configuredFocusMin(): number {
     const raw = this.store.data.settings.focusMinutes
@@ -76,7 +82,11 @@ export class FocusController {
       f.remainingMs = ms
       f.running = true
       this.startTicker()
-      this.onOtter({ action: 'read', bubble: `开始 ${mins} 分钟专注，我陪你~`, durationMs: 3200 })
+      this.onOtter({
+        action: 'read',
+        bubble: getMessages(this.getLocale()).notifications.focusStartBubble(mins),
+        durationMs: 3200
+      })
     } else if (action === 'pause') {
       this.syncElapsed()
       f.running = false
@@ -98,7 +108,11 @@ export class FocusController {
       f.remainingMs = ms
       f.running = true
       this.startTicker()
-      this.onOtter({ action: 'rest', bubble: `伸个懒腰，休息 ${mins} 分钟吧~`, durationMs: 4000 })
+      this.onOtter({
+        action: 'rest',
+        bubble: getMessages(this.getLocale()).notifications.restStartBubble(mins),
+        durationMs: 4000
+      })
     } else if (action === 'reset') {
       this.stopTicker()
       const rawMin =
@@ -174,7 +188,7 @@ export class FocusController {
         f.phase = 'focus_done'
         this.onOtter({
           action: 'wave',
-          bubble: '本轮专注结束啦，喝口水歇会儿~',
+          bubble: getMessages(this.getLocale()).notifications.focusEndBubble,
           durationMs: 5000
         })
         this.onFinished?.('focus')
@@ -184,7 +198,7 @@ export class FocusController {
         f.remainingMs = f.totalMs
         this.onOtter({
           action: 'wave',
-          bubble: '休息完毕，随时可以继续~',
+          bubble: getMessages(this.getLocale()).notifications.restEndBubble,
           durationMs: 4000
         })
         this.onFinished?.('rest')

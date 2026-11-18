@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { chooseDropEffect } from '../../../shared/dropPaths'
+import { getMessages } from '../../../shared/i18n'
 import { isInsideIsland, isOnWater } from '../../../shared/shape'
-import type { DockItem, FocusState, IslandPose, OtterAction } from '../../../shared/types'
+import type { AppLocale, DockItem, FocusState, IslandPose, OtterAction } from '../../../shared/types'
 import {
   clampParcelStageAnchor,
   type DraggingParcel,
@@ -12,6 +13,7 @@ import {
 } from './islandMath'
 
 interface ParcelGestureDeps {
+  locale: AppLocale
   poseRef: React.MutableRefObject<IslandPose>
   draggingWinRef: React.MutableRefObject<boolean>
   focusRef: React.MutableRefObject<FocusState | null>
@@ -33,6 +35,7 @@ interface ParcelGestureDeps {
  * 3) Nameplate sea-throw button animation (`throwParcelWithHand`) and splash removal effects.
  */
 export function useParcelGestures({
+  locale,
   poseRef,
   draggingWinRef,
   focusRef,
@@ -97,7 +100,7 @@ export function useParcelGestures({
       window.setTimeout(() => spawnRipple(x + 2, y + 1), 340)
       const curFocus = focusRef.current
       if (!(curFocus?.phase === 'focus' && curFocus.running)) {
-        triggerOtter('wave', '扑通！已移出码头~', 2000, 'react-hop')
+        triggerOtter('wave', getMessages(locale).island.seaThrowBubble, 2000, 'react-hop')
       }
       if (poseRef.current.mode !== 'docked') {
         window.isle.holdExpand(5000)
@@ -115,7 +118,7 @@ export function useParcelGestures({
         })
       }, 1220)
     },
-    [focusRef, poseRef, spawnParticles, spawnRipple, triggerOtter]
+    [focusRef, locale, poseRef, spawnParticles, spawnRipple, triggerOtter]
   )
 
   const throwParcelWithHand = useCallback(

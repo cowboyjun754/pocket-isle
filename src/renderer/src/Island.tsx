@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { chooseDropEffect, extractPathsFromDataTransfer } from '../../shared/dropPaths'
+import { DEFAULT_LOCALE, getMessages, resolveLocale } from '../../shared/i18n'
 import {
   DOCK_BADGE,
   GRASS_ELLIPSE,
@@ -11,6 +12,7 @@ import {
   isOnWater
 } from '../../shared/shape'
 import type {
+  AppLocale,
   DecorationState,
   DockItem,
   DockUndoState,
@@ -33,8 +35,8 @@ import { ForegroundDecorSvg, StageFxSvg } from './island/IslandDecorSvg'
 import {
   AMBIENCE_NEXT,
   DECO_Z_ORDER,
-  PAT_REACTIONS,
   formatMmSs,
+  getPatReactions,
   toStageCoordsWith,
   type FloatingParticle,
   type WaterRipple
@@ -46,6 +48,7 @@ import { describeResult } from './util'
 
 /** Desktop floating island stage coordinating window drag, interactive toys, and pier parcel layers. */
 export function Island(): JSX.Element {
+  const [locale, setLocale] = useState<AppLocale>(DEFAULT_LOCALE)
   const [items, setItems] = useState<DockItem[]>([])
   const [pose, setPose] = useState<IslandPose>({ side: 'right', mode: 'docked', hover: false })
   const [decor, setDecor] = useState<DecorationState>({
@@ -90,6 +93,8 @@ export function Island(): JSX.Element {
   const patIdx = useRef(0)
   const prevHoverRef = useRef(false)
   const lastWinDragAt = useRef(0)
+  const localeRef = useRef<AppLocale>(locale)
+  localeRef.current = locale
   const poseRef = useRef(pose)
   poseRef.current = pose
   const sproutsRef = useRef(sprouts)
@@ -173,6 +178,7 @@ export function Island(): JSX.Element {
   }, [])
 
   const gestures = useParcelGestures({
+    locale,
     poseRef,
     draggingWinRef,
     focusRef,
@@ -181,6 +187,11 @@ export function Island(): JSX.Element {
     spawnParticles,
     triggerOtter
   })
+
+  useEffect(() => {
+    document.documentElement.lang = locale === 'en' ? 'en' : 'zh-CN'
+    document.title = getMessages(locale).appName
+  }, [locale])
 
   useEffect(() => {
     const onWindowBlur = (): void => {
@@ -225,6 +236,7 @@ export function Island(): JSX.Element {
     window.isle.getDecorations().then(setDecor)
     window.isle.getIslandMemory().then(applyMemory)
     window.isle.getFocus().then(setFocus)
+    window.isle.getSettings().then((s) => setLocale(resolveLocale(s.locale)))
 
     const off1 = window.isle.onDockChanged(refresh)
     const off2 = window.isle.onPose((p) => {
@@ -232,11 +244,12 @@ export function Island(): JSX.Element {
       if (p.mode !== 'full') setRoamSpot(null)
     })
     const off3 = window.isle.onReceived((r) => {
+      const loc = localeRef.current
       if (r.added > 0) {
         setRoamSpot(null)
-        triggerOtter('receive', '收到文件啦!', 1600, 'react-hop')
+        triggerOtter('receive', getMessages(loc).island.receivedBubble, 1600, 'react-hop')
       }
-      showToast(describeResult(r))
+      showToast(describeResult(r, loc))
     })
     const off4 = window.isle.onDecorChanged((nextDecor) => {
       setDecor((prev) => {
@@ -254,12 +267,13 @@ export function Island(): JSX.Element {
     })
     const off7 = window.isle.onDragEnded(() => gestures.clearEndedDragState())
     const off8 = window.isle.onDockUndoChanged((u) => setUndoState(u))
+    const offSettings = window.isle.onSettingsChanged((s) => setLocale(resolveLocale(s.locale)))
 
     const onKeyDown = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault()
         window.isle.pasteFromClipboard().then((res) => {
-          const msg = describeResult(res)
+          const msg = describeResult(res, localeRef.current)
           if (msg) showToast(msg)
         })
       }
@@ -276,6 +290,7 @@ export function Island(): JSX.Element {
       off6()
       off7()
       off8()
+      offSettings()
       window.removeEventListener('keydown', onKeyDown)
       if (actionTimer.current) window.clearTimeout(actionTimer.current)
       if (toastTimer.current) window.clearTimeout(toastTimer.current)
@@ -354,13 +369,15 @@ export function Island(): JSX.Element {
     }
   }
 
+  const im = getMessages(locale).island
+
   const onDrop = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
     setDragOver(false)
     if (gestures.consumeDroppedParcel()) return
     const paths = extractPathsFromDataTransfer(e.dataTransfer, (f) => window.isle.getPathForFile(f))
     if (!paths.length) {
-      showToast('未识别到本地文件路径，请从文件列表或资源管理器拖入')
+      showToast(im.dropUnknown)
       return
     }
     await window.isle.addPaths(paths)
@@ -474,7 +491,7 @@ export function Island(): JSX.Element {
         window.isle.setIslandMemory({ sprouts: nextSprouts })
         const walkX = Math.min(Math.max(st.localX, 128), 268)
         const walkY = Math.min(Math.max(st.localY + 6, 98), 160)
-        triggerOtter('wave', '种下一朵小花 ♪', 2000, 'react-hop', { x: walkX, y: walkY })
+        triggerOtter('wave', im.plantFlower, 2000, 'react-hop', { x: walkX, y: walkY })
       }
     }
   }
@@ -500,7 +517,8 @@ export function Island(): JSX.Element {
   const onOtterClick = (e: React.MouseEvent): void => {
     e.stopPropagation()
     if (dragMove.current?.moved || draggingWin || justDraggedWin()) return
-    const pick = PAT_REACTIONS[patIdx.current % PAT_REACTIONS.length]
+    const reactions = getPatReactions(locale)
+    const pick = reactions[patIdx.current % reactions.length]
     patIdx.current++
     triggerOtter(pick.action, pick.bubble, 1800, pick.anim)
   }
@@ -551,39 +569,39 @@ export function Island(): JSX.Element {
     switch (spotId) {
       case 'flowers':
         spawnParticles(120, 54, 'butterfly', 2)
-        triggerOtter('wave', '花丛里有小蝴蝶~', 2400, 'react-hop', { x: 132, y: 112 })
+        triggerOtter('wave', im.flowersSpot, 2400, 'react-hop', { x: 132, y: 112 })
         break
       case 'bench':
-        triggerOtter('rest', '坐长椅吹吹海风~', 3200, 'react-nod', { x: 154, y: 96 })
+        triggerOtter('rest', im.benchSpot, 3200, 'react-nod', { x: 154, y: 96 })
         break
       case 'lamp': {
         const next = !showNightGlow
         setLampOverride(next)
         window.isle.setIslandMemory({ lampLit: next })
         spawnParticles(173, 28, 'note', 2)
-        triggerOtter('wave', next ? '啪嗒，点亮小路灯 ✨' : '路灯关上啦~', 2000, 'react-hop')
+        triggerOtter('wave', next ? im.lampOn : im.lampOff, 2000, 'react-hop')
         break
       }
       case 'tree':
         spawnParticles(198, 38, 'leaf', 3)
-        triggerOtter('read', '树荫下看书最舒服啦~', 2800, 'react-nod', { x: 196, y: 98 })
+        triggerOtter('read', im.treeSpot, 2800, 'react-nod', { x: 196, y: 98 })
         break
       case 'cabin': {
         const nextCabin = !showCabinWarm
         setCabinOverride(nextCabin)
         window.isle.setIslandMemory({ cabinWarm: nextCabin })
         spawnParticles(228, 34, 'smoke', 3)
-        triggerOtter('wave', '欢迎来我的小木屋!', 2600, 'react-wave', { x: 218, y: 108 })
+        triggerOtter('wave', im.cabinSpot, 2600, 'react-wave', { x: 218, y: 108 })
         break
       }
       case 'windmill':
         spawnParticles(258, 50, 'dandelion', 3)
-        triggerOtter('wave', '风车转起来咯~', 2200, 'react-hop', { x: 248, y: 118 })
+        triggerOtter('wave', im.windmillSpot, 2200, 'react-hop', { x: 248, y: 118 })
         break
       case 'picnic':
         setPicnicSteaming(true)
         spawnParticles(232, 132, 'heart', 2)
-        triggerOtter('receive', '喝口热茶，吃颗草莓 ♥', 2800, 'react-hop', { x: 214, y: 148 })
+        triggerOtter('receive', im.picnicSpot, 2800, 'react-hop', { x: 214, y: 148 })
         break
       case 'starfish':
         setStarfishHop(true)
@@ -701,7 +719,7 @@ export function Island(): JSX.Element {
             onPointerMove={onBoatPointerMove}
             onPointerUp={onBoatPointerUp}
             onPointerCancel={onBoatPointerUp}
-            title="减压小纸船：点击或拖到水面任意处松手，看它顺水漂走~"
+            title={im.boatTitle}
           >
             <img src={PAPER_BOAT_URL} alt="" width={34} height={22} draggable={false} />
           </div>
@@ -728,6 +746,7 @@ export function Island(): JSX.Element {
 
         {effectiveMode !== 'docked' && (
           <ParcelLayer
+            locale={locale}
             items={items}
             effectiveMode={effectiveMode}
             draggingParcel={gestures.draggingParcel}
@@ -771,7 +790,7 @@ export function Island(): JSX.Element {
               window.isle.setExpandMode('full')
               window.isle.togglePanel()
             }}
-            title="点击打开专注面板"
+            title={im.focusPillTitle}
           >
             <span className="pill-dot" />
             <span>
@@ -779,10 +798,10 @@ export function Island(): JSX.Element {
                 ? formatMmSs(focus.remainingMs)
                 : `${
                     focus.phase === 'focus'
-                      ? '专注'
+                      ? im.focusPhaseFocus
                       : focus.phase === 'rest'
-                        ? '休息'
-                        : '完成'
+                        ? im.focusPhaseRest
+                        : im.focusPhaseDone
                   } ${formatMmSs(focus.remainingMs)}`}
             </span>
           </div>
@@ -797,10 +816,10 @@ export function Island(): JSX.Element {
             className="ambience-btn"
             title={
               decor.ambience === 'day'
-                ? '当前：晴天暖阳（点击切至微夜）'
+                ? im.ambienceDayTitle
                 : decor.ambience === 'night'
-                  ? '当前：星夜萤火（点击切至细雨）'
-                  : '当前：细雨听海（点击切回晴天）'
+                  ? im.ambienceNightTitle
+                  : im.ambienceRainTitle
             }
             onClick={(e) => {
               e.stopPropagation()
@@ -845,20 +864,20 @@ export function Island(): JSX.Element {
             className={`island-toast island-undo-pill toast-${effectiveMode} toast-side-${pose.side}`}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <span className="island-undo-label">已移出「{undoState.label}」</span>
+            <span className="island-undo-label">{im.undoLabel(undoState.label)}</span>
             <button
               className="island-undo-btn"
               onClick={async (e) => {
                 e.stopPropagation()
                 const res = await window.isle.undoRemove(undoState.token)
                 if (res.ok) {
-                  triggerOtter('wave', '捞回码头啦~', 2000, 'react-hop')
+                  triggerOtter('wave', im.undoRestoredBubble, 2000, 'react-hop')
                 } else {
                   showToast(res.message)
                 }
               }}
             >
-              撤销
+              {im.undoBtn}
             </button>
           </div>
         )

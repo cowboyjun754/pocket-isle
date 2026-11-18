@@ -1,3 +1,4 @@
+import { resolveLocale } from '../shared/i18n'
 import type { Settings, SettingsPatch } from '../shared/types'
 
 export const COPY_LIMIT_MIN_MB = 64
@@ -16,16 +17,19 @@ export function applySettingsPatch(
   next: Settings
   alwaysOnTopChanged: boolean
   openAtLoginChanged: boolean
+  localeChanged: boolean
 } {
   const patch: SettingsPatch =
     rawPatch && typeof rawPatch === 'object' ? (rawPatch as SettingsPatch) : {}
 
   const next: Settings = {
     ...current,
+    locale: resolveLocale(current.locale),
     ai: { ...current.ai }
   }
   let alwaysOnTopChanged = false
   let openAtLoginChanged = false
+  let localeChanged = false
 
   if (typeof patch.alwaysOnTop === 'boolean' && patch.alwaysOnTop !== current.alwaysOnTop) {
     next.alwaysOnTop = patch.alwaysOnTop
@@ -63,5 +67,13 @@ export function applySettingsPatch(
     next.focusNotify = patch.focusNotify
   }
 
-  return { next, alwaysOnTopChanged, openAtLoginChanged }
+  if (patch.locale === 'zh-CN' || patch.locale === 'en') {
+    const prevLocale = resolveLocale(current.locale)
+    if (patch.locale !== prevLocale) {
+      localeChanged = true
+    }
+    next.locale = patch.locale
+  }
+
+  return { next, alwaysOnTopChanged, openAtLoginChanged, localeChanged }
 }

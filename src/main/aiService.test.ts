@@ -11,11 +11,13 @@ import {
   extractPdfText,
   isAbortError,
   mapOrganizeResponse,
+  organizeAndSummarize,
   parseJsonLoose,
   readTextFilePreview,
   readZipEntryText,
   requiresApiKey,
   summarizeDocumentsTogether,
+  testConnection,
   type ExtractedDoc
 } from './aiService'
 
@@ -591,6 +593,79 @@ describe('extractFileSnippet (.pptx / .xlsx / Vision) & requiresApiKey', () => {
       expect(userBody.relatedFiles).toEqual([])
     } finally {
       vi.unstubAllGlobals()
+    }
+  })
+
+  it('switches AI prompts, read notes, and response messages cleanly to English when locale="en"', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pocket-isle-ai-en-'))
+    const imgPath = join(dir, 'snap.png')
+    writeFileSync(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+
+    const doc = await extractFileSnippet(
+      {
+        id: 'img-en',
+        name: 'snap.png',
+        ext: 'png',
+        path: imgPath,
+        sourcePath: imgPath,
+        isCopy: false,
+        size: 4,
+        mtimeMs: 0,
+        addedAt: 0
+      },
+      1200,
+      { locale: 'en' }
+    )
+    expect(doc.readNote).toContain('Vision disabled')
+
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                reply: 'Hello from the pier!',
+                otterBubble: 'All sorted for you~',
+                items: [
+                  {
+                    id: 'img-en',
+                    group: 'Screenshots',
+                    brief: 'Inferred from filename only: PNG snapshot'
+                  }
+                ]
+              })
+            }
+          }
+        ]
+      })
+    }))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    try {
+      const cfg = {
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiKey: 'sk-test-en',
+        model: 'deepseek-chat',
+        enableVision: false
+      }
+      const conn = await testConnection(cfg, 'en')
+      expect(conn.ok).toBe(true)
+      expect(conn.message).toBe('Connected! Otter says: "Hello from the pier!"')
+
+      const org = await organizeAndSummarize(cfg, [doc], undefined, 'en')
+      expect(org.result.ok).toBe(true)
+      expect(org.result.message).toBe('Organized 1 files and generated summaries')
+      expect(org.updates.get('img-en')?.group).toBe('Screenshots')
+
+      const [, init] = fetchSpy.mock.calls[1] as unknown as [string, RequestInit]
+      const body = JSON.parse(String(init.body)) as {
+        messages: Array<{ role: string; content: string }>
+      }
+      expect(body.messages[0].content).toContain('Return a single strict JSON object only')
+    } finally {
+      vi.unstubAllGlobals()
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 })

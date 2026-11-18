@@ -1,11 +1,12 @@
 import { parentPort } from 'node:worker_threads'
-import type { DockItem } from '../shared/types'
+import type { AppLocale, DockItem } from '../shared/types'
 import { extractDocTextOnly, type ExtractedDoc } from './fileExtractor'
 
 export interface WorkerExtractRequest {
   reqId: number
   item: DockItem
   maxChars: number
+  locale?: AppLocale
 }
 
 export interface WorkerExtractResponse {
@@ -17,7 +18,7 @@ export interface WorkerExtractResponse {
 if (parentPort) {
   parentPort.on('message', async (msg: WorkerExtractRequest) => {
     try {
-      const doc = await extractDocTextOnly(msg.item, msg.maxChars)
+      const doc = await extractDocTextOnly(msg.item, msg.maxChars, msg.locale)
       const res: WorkerExtractResponse = { reqId: msg.reqId, doc }
       parentPort?.postMessage(res)
     } catch (err) {

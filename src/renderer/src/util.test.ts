@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { DockItem } from '../../shared/types'
-import { formatDurationMmSs, resolveBreakdownDocIds, resolveOrganizeScope } from './util'
+import {
+  describeResult,
+  formatDurationMmSs,
+  resolveBreakdownDocIds,
+  resolveOrganizeScope
+} from './util'
 
 function makeItem(id: string, name: string): DockItem {
   return {
@@ -59,5 +64,18 @@ describe('AI scope selection helpers', () => {
     expect(formatDurationMmSs(0)).toBe('00:00')
     expect(formatDurationMmSs(900)).toBe('00:01')
     expect(formatDurationMmSs(5 * 60 * 1000)).toBe('05:00')
+  })
+
+  it('formats AddResult notices in Simplified Chinese and English', () => {
+    expect(describeResult({ added: 2, skipped: 1, errors: [] }, 'zh-CN')).toBe(
+      '收到 2 个文件，1 个已在码头'
+    )
+    expect(describeResult({ added: 2, skipped: 1, errors: [] }, 'en')).toBe(
+      'Staged 2 files, 1 already docked'
+    )
+    expect(describeResult({ added: 0, skipped: 1, errors: [] }, 'en')).toBe(
+      'This file is already on the pier'
+    )
+    expect(describeResult({ added: 0, skipped: 0, errors: [] }, 'en')).toBeNull()
   })
 })

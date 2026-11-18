@@ -1,4 +1,5 @@
-import type { FileSummary } from '../shared/types'
+import { getMessages } from '../shared/i18n'
+import type { AppLocale, FileSummary } from '../shared/types'
 
 export function asCleanText(val: unknown, maxLen: number): string {
   if (typeof val === 'string') return val.trim().slice(0, maxLen)
@@ -6,10 +7,13 @@ export function asCleanText(val: unknown, maxLen: number): string {
   return ''
 }
 
-export function sanitizeFileSummary(raw: unknown): FileSummary | undefined {
+export function sanitizeFileSummary(
+  raw: unknown,
+  locale: AppLocale = 'zh-CN'
+): FileSummary | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const obj = raw as Record<string, unknown>
-  const brief = asCleanText(obj.brief, 180) || '暂无简介'
+  const brief = asCleanText(obj.brief, 180) || getMessages(locale).main.briefFallback
   const bullets = Array.isArray(obj.bullets)
     ? obj.bullets
         .map((b) => asCleanText(b, 80))
