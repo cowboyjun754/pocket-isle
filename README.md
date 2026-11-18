@@ -73,14 +73,16 @@
   ```text
   src/
   ├── main/                 # Electron 主进程（窗口生命周期、穿透/吸附、文件口袋、Store、AI 解析与专注计时）
-  │   ├── index.ts          # 窗口管理、IPC 注册与系统托盘
-  │   ├── dock.ts           # 文件口袋暂存、去重、临时目录副本管理
-  │   ├── aiService.ts      # 本地文件解析（Office/PDF/文本/Vision）与 AI 接口封装
-  │   ├── focusTimer.ts     # 独立番茄钟状态机
-  │   ├── store.ts          # 本地 JSON 原子持久化（含小岛记忆）
+  │   ├── index.ts          # 窗口管理、IPC 来源守卫与系统托盘
+  │   ├── dock.ts           # 文件口袋暂存、并发去重、配额预留与短时撤销恢复
+  │   ├── aiSecrets.ts      # 按服务源隔离并通过 Electron safeStorage 加密保存密钥
+  │   ├── fileExtractor.ts  # 纯文本/Office/PDF 正文提取（配合 extractWorker.ts 后台线程解析）
+  │   ├── aiService.ts      # AI 批量提取预算、Schema 清洗与接口封装
+  │   ├── focusTimer.ts     # 独立番茄钟状态机（含定期检查点持久化）
+  │   ├── store.ts          # 本地 JSON 原子持久化（含小岛记忆与失败重试）
   │   └── ...               # 路径规则、剪贴板命名、设置校验及对应单测
   ├── preload/              # contextBridge 安全暴露 window.isle API
-  ├── shared/               # 前后端共享类型、舞台几何热区、拖拽路径/包裹类型判定及单测
+  ├── shared/               # 前后端共享类型、舞台几何热区、多屏重算、AI 提供商识别及单测
   └── renderer/             # 两个透明无边框前端视图（#island 与 #panel）
       └── src/
           ├── Island.tsx    # 小岛舞台、包裹手势、水獭状态与手绘动画
@@ -106,15 +108,18 @@ cd pocket-isle
 # 2. 安装依赖
 npm install
 
-# 3. 生产构建并启动 Electron（或直接双击根目录 启动停靠岛.bat）
+# 3. 生产构建并启动 Electron（或打包后双击 停靠岛.lnk / 启动停靠岛.vbs）
 npm run build
 npx electron .
+
+# 打包 Windows 独立目录版（生成 release/停靠岛/停靠岛.exe 与 停靠岛.lnk）
+npm run package
 
 # 开发调试模式（热重载）
 npm run dev
 ```
 
-Windows 下也可以直接双击根目录下的 [`启动停靠岛.bat`](启动停靠岛.bat)，脚本会自动执行 `npm run build` 并重启拉起小岛浮窗。
+Windows 下日常唤起可直接双击 [`停靠岛.lnk`](停靠岛.lnk)；需要重启切换新版时可双击 [`启动停靠岛.bat`](启动停靠岛.bat)（调用 [`启动停靠岛.vbs`](启动停靠岛.vbs) 精准匹配当前目录实例退出后重新拉起：优先启动已打包的 `release/停靠岛/停靠岛.exe`，若尚未打包则按需执行 `npm run build` 并以 `electron.exe` 启动；源码修改后请先运行 `npm run build` 或 `npm run package`）。
 
 ### 3. 日常使用说明
 - **展开与打开面板**：
@@ -127,8 +132,8 @@ Windows 下也可以直接双击根目录下的 [`启动停靠岛.bat`](启动�
   - **右键按住拖动**栈桥上的包裹扔入海面，或悬停点击名牌上的 **「🌊 扔海里」** 移出码头（不删磁盘原文件）；
   - 双击包裹可直接使用系统默认程序打开。
 - **AI 配置说明**：
-  - 打开面板右上角 **「⚙ 设置」**，点击常用模板（如 DeepSeek、通义千问、OpenAI 或本地 Ollama / LM Studio），填好模型与密钥后可点 **「测试连接」**；
-  - 所有配置均只保存在本地用户数据目录，不会上传或写入日志；不配置 AI 密钥时，文件中转、桌搭互动与专注计时仍可 100% 离线使用。
+  - 打开面板右上角 **「⚙ 设置」**，点击常用模板（如 DeepSeek、通义千问、OpenAI 或本地 Ollama / LM Studio），按服务源独立加密保存密钥，填好后可先点 **「测试连接」** 验证（测试不会覆写已保存配置）；
+  - 所有配置与加密密钥均只保存在本地用户数据目录，不配置 AI 密钥时，文件中转、桌搭互动与专注计时仍可 100% 离线使用。
 
 ### 4. 开发与自检命令
 
@@ -136,11 +141,14 @@ Windows 下也可以直接双击根目录下的 [`启动停靠岛.bat`](启动�
 # TypeScript 严格类型检查
 npm run typecheck
 
-# 运行 Vitest 单元测试（38 条用例）
+# 运行 Vitest 单元测试
 npm test
 
 # 构建主进程、preload 与渲染层产物
 npm run build
+
+# 打包 Windows 独立版（build/icon.ico 与 release/停靠岛/停靠岛.exe）
+npm run package
 ```
 
 ---

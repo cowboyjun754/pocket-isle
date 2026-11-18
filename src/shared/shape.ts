@@ -10,6 +10,13 @@ export type Pt = { x: number; y: number }
 export type DockSide = 'right' | 'left' | 'free'
 export type ExpandMode = 'docked' | 'peek' | 'full'
 
+export interface WorkAreaRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export const STAGE = { w: 320, h: 240 }
 export const PANEL = { w: 430, h: 580 }
 
@@ -90,6 +97,10 @@ export const DOCK_NAMEPLATE_RECT = { x0: 6, y0: 18, x1: 156, y1: 102 }
 /** 栈桥前缘到近海水面的右手拖抛过渡区（有包裹且非 docked 时防止跨水缘穿透） */
 export const DOCK_SEA_TRANSITION_RECT = { x0: 36, y0: 150, x1: 132, y1: 188 }
 
+/** 岛上撤销浮条热区（半开与全展开态出现「撤销移除」按钮时防止鼠标穿透） */
+export const ISLAND_UNDO_PEEK_RECT = { x0: 6, y0: 174, x1: 146, y1: 218 }
+export const ISLAND_UNDO_FULL_RECT = { x0: 40, y0: 190, x1: 280, y1: 232 }
+
 /** 判断舞台局部坐标是否落在外圈海面（点击可触发水波涟漪） */
 export function isOnWater(localX: number, localY: number): boolean {
   return (
@@ -107,7 +118,8 @@ export function isInsideIsland(
   winY: number,
   side: DockSide = 'right',
   mode: ExpandMode = 'full',
-  hasParcels = false
+  hasParcels = false,
+  hasUndo = false
 ): boolean {
   if (winX < 0 || winY < 0 || winX > STAGE.w || winY > STAGE.h) return false
   const offsetX = getStageOffsetX(side, mode)
@@ -118,6 +130,21 @@ export function isInsideIsland(
 
   if (mode === 'docked') {
     return localX >= 0 && localX <= VISIBLE_WIDTH.docked + 10 && localY >= 64 && localY <= 164
+  }
+  if (
+    hasUndo &&
+    ((mode === 'peek' &&
+      localX >= ISLAND_UNDO_PEEK_RECT.x0 &&
+      localX <= ISLAND_UNDO_PEEK_RECT.x1 &&
+      localY >= ISLAND_UNDO_PEEK_RECT.y0 &&
+      localY <= ISLAND_UNDO_PEEK_RECT.y1) ||
+      (mode === 'full' &&
+        localX >= ISLAND_UNDO_FULL_RECT.x0 &&
+        localX <= ISLAND_UNDO_FULL_RECT.x1 &&
+        localY >= ISLAND_UNDO_FULL_RECT.y0 &&
+        localY <= ISLAND_UNDO_FULL_RECT.y1))
+  ) {
+    return true
   }
   if (
     hasParcels &&
@@ -208,6 +235,80 @@ export function resolveSnapSide(params: {
   if (curDistRight <= SNAP_THRESHOLD || winX + STAGE.w >= rightEdge - 24) return 'right'
   if (curDistLeft <= SNAP_THRESHOLD || winX <= leftEdge + 24) return 'left'
   return 'free'
+}
+
+export function clampIslandToWorkArea(
+  pos: { x: number; y: number },
+  side: DockSide,
+  wa: WorkAreaRect
+): { x: number; y: number } {
+  const y = Math.min(Math.max(pos.y, wa.y), Math.max(wa.y, wa.y + wa.height - STAGE.h))
+  if (side === 'right') return { x: wa.x + wa.width - STAGE.w, y }
+  if (side === 'left') return { x: wa.x, y }
+  const x = Math.min(Math.max(pos.x, wa.x), Math.max(wa.x, wa.x + wa.width - STAGE.w))
+  return { x, y }
+}
+
+/**
+ * 显示器分辨率、DPI 缩放或插拔变化后重算小岛合法位置：
+ * - 即使旧坐标中心仍在新屏幕内，只要是 left / right 停靠态也强制吸齐对应边缘；
+ * - 若旧显示器已移除，则回退至主显示器工作区。
+ */
+export function reconcileIslandPosOnDisplayChange(params: {
+  currentPos?: { x: number; y: number }
+  side: DockSide
+  allWorkAreas: WorkAreaRect[]
+  primaryWorkArea: WorkAreaRect
+}): { x: number; y: number } {
+  const { currentPos, side, allWorkAreas, primaryWorkArea } = params
+  const makeDefaultFor = (wa: WorkAreaRect): { x: number; y: number } => ({
+    x:
+      side === 'left'
+        ? wa.x
+        : side === 'right'
+          ? wa.x + wa.width - STAGE.w
+          : Math.round(wa.x + (wa.width - STAGE.w) / 2),
+    y: Math.round(wa.y + wa.height * 0.62)
+  })
+
+  if (!currentPos) {
+    return clampIslandToWorkArea(makeDefaultFor(primaryWorkArea), side, primaryWorkArea)
+  }
+
+  const cx = currentPos.x + STAGE.w / 2
+  const cy = currentPos.y + STAGE.h / 2
+  const matched = allWorkAreas.find(
+    (a) => cx >= a.x && cx <= a.x + a.width && cy >= a.y && cy <= a.y + a.height
+  )
+  if (!matched) {
+    return clampIslandToWorkArea(makeDefaultFor(primaryWorkArea), side, primaryWorkArea)
+  }
+  return clampIslandToWorkArea(currentPos, side, matched)
+}
+
+export function clampPanelBoundsToWorkArea(
+  bounds: { x: number; y: number; width: number; height: number },
+  allWorkAreas: WorkAreaRect[],
+  primaryWorkArea: WorkAreaRect
+): { x: number; y: number; width: number; height: number } {
+  const cx = bounds.x + bounds.width / 2
+  const cy = bounds.y + bounds.height / 2
+  const wa =
+    allWorkAreas.find(
+      (a) => cx >= a.x && cx <= a.x + a.width && cy >= a.y && cy <= a.y + a.height
+    ) ?? primaryWorkArea
+  const gap = 8
+  const w = Math.min(bounds.width, Math.max(240, wa.width - gap * 2))
+  const h = Math.min(bounds.height, Math.max(240, wa.height - gap * 2))
+  const x = Math.min(
+    Math.max(bounds.x, wa.x + gap),
+    Math.max(wa.x + gap, wa.x + wa.width - w - gap)
+  )
+  const y = Math.min(
+    Math.max(bounds.y, wa.y + gap),
+    Math.max(wa.y + gap, wa.y + wa.height - h - gap)
+  )
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }
 }
 
 export const polyPoints = (pts: Pt[]): string => pts.map((p) => `${p.x},${p.y}`).join(' ')

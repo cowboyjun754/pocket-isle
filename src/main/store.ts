@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from '../shared/aiProvider'
 import type { DockSide } from '../shared/shape'
 import type {
   DecorationState,
@@ -9,11 +10,14 @@ import type {
   IslandSprout,
   Settings
 } from '../shared/types'
+import { sanitizeFileSummary } from './summaryGuard'
 
 export interface Data {
   version: 2
   items: DockItem[]
+  pendingDeletes?: string[]
   settings: Settings
+  aiSecrets?: Record<string, string>
   decorations: DecorationState
   islandMemory: IslandMemory
   focus: FocusState
@@ -60,9 +64,8 @@ const DEFAULT_SETTINGS: Settings = {
   restMinutes: 5,
   focusNotify: true,
   ai: {
-    baseUrl: 'https://api.deepseek.com/v1',
-    apiKey: '',
-    model: 'deepseek-chat',
+    baseUrl: DEFAULT_AI_BASE_URL,
+    model: DEFAULT_AI_MODEL,
     enableVision: false
   }
 }
@@ -70,7 +73,9 @@ const DEFAULT_SETTINGS: Settings = {
 const DEFAULT_DATA: Data = {
   version: 2,
   items: [],
+  pendingDeletes: [],
   settings: DEFAULT_SETTINGS,
+  aiSecrets: {},
   decorations: DEFAULT_DECORATIONS,
   islandMemory: DEFAULT_ISLAND_MEMORY,
   focus: DEFAULT_FOCUS,
@@ -95,31 +100,74 @@ function normalizeSprouts(raw: unknown): IslandSprout[] {
   return valid
 }
 
-/** 简单 JSON 持久化：先写临时文件再改名替换，防止写到一半断电导致文件损坏；平滑迁移 v1 数据 */
+/** 简单 JSON 持久化：先写临时文件再改名替换，写盘失败保留脏标记并自动重试 */
 export class Store {
   data: Data
   private file: string
   private timer: NodeJS.Timeout | null = null
+  private retryTimer: NodeJS.Timeout | null = null
+  private dirty = false
+  private lastSaveError: string | null = null
+  private onSaveError?: (msg: string) => void
+  private legacyAiKey: { baseUrl: string; apiKey: string } | null = null
 
-  constructor(dir: string) {
+  constructor(dir: string, opts?: { onSaveError?: (msg: string) => void }) {
     mkdirSync(dir, { recursive: true })
     this.file = join(dir, 'data.json')
+    this.onSaveError = opts?.onSaveError
     this.data = this.load()
+  }
+
+  getLastSaveError(): string | null {
+    return this.lastSaveError
+  }
+
+  isDirty(): boolean {
+    return this.dirty
+  }
+
+  consumeLegacyAiKey(): { baseUrl: string; apiKey: string } | null {
+    const k = this.legacyAiKey
+    this.legacyAiKey = null
+    return k
   }
 
   private load(): Data {
     try {
       if (existsSync(this.file)) {
-        const raw = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<Data>
+        const raw = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<Data> & {
+          settings?: Partial<Settings> & { ai?: Record<string, unknown> }
+        }
         const savedFocus = raw.focus ?? DEFAULT_FOCUS
+        const rawAi = raw.settings?.ai
+        const rawLegacyKey = typeof rawAi?.apiKey === 'string' ? rawAi.apiKey.trim() : ''
+        const aiBaseUrl =
+          typeof rawAi?.baseUrl === 'string' && rawAi.baseUrl.trim()
+            ? rawAi.baseUrl.trim()
+            : DEFAULT_SETTINGS.ai.baseUrl
+        if (rawLegacyKey) {
+          this.legacyAiKey = { baseUrl: aiBaseUrl, apiKey: rawLegacyKey }
+        }
         const mergedSettings: Settings = {
           ...DEFAULT_SETTINGS,
           ...(raw.settings ?? {}),
           ai: {
-            ...DEFAULT_SETTINGS.ai,
-            ...(raw.settings?.ai ?? {})
+            baseUrl: aiBaseUrl,
+            model:
+              typeof rawAi?.model === 'string' && rawAi.model.trim()
+                ? rawAi.model.trim()
+                : DEFAULT_SETTINGS.ai.model,
+            enableVision: !!rawAi?.enableVision
           }
         }
+        const rawSecrets =
+          raw.aiSecrets && typeof raw.aiSecrets === 'object' && !Array.isArray(raw.aiSecrets)
+            ? Object.fromEntries(
+                Object.entries(raw.aiSecrets).filter(
+                  (kv): kv is [string, string] => typeof kv[0] === 'string' && typeof kv[1] === 'string'
+                )
+              )
+            : {}
         const focusMin =
           typeof mergedSettings.focusMinutes === 'number' &&
           Number.isFinite(mergedSettings.focusMinutes)
@@ -136,11 +184,27 @@ export class Store {
           typeof mergedSettings.focusNotify === 'boolean' ? mergedSettings.focusNotify : true
         const focusPhase = savedFocus.phase ?? 'idle'
         const focusMs = focusMin * 60 * 1000
+        const safeItems: DockItem[] = Array.isArray(raw.items)
+          ? raw.items
+              .filter((it): it is DockItem => !!it && typeof it === 'object' && typeof it.id === 'string' && typeof it.path === 'string')
+              .map((it) => {
+                const summary = sanitizeFileSummary((it as unknown as { summary?: unknown }).summary)
+                const { summary: _old, available: _avail, ...rest } = it as DockItem & {
+                  summary?: unknown
+                }
+                return summary ? { ...rest, summary } : rest
+              })
+          : []
+        const safePendingDeletes = Array.isArray(raw.pendingDeletes)
+          ? raw.pendingDeletes.filter((p): p is string => typeof p === 'string' && p.length > 0)
+          : []
         return {
           ...DEFAULT_DATA,
           ...raw,
-          items: Array.isArray(raw.items) ? raw.items : [],
+          items: safeItems,
+          pendingDeletes: safePendingDeletes,
           settings: mergedSettings,
+          aiSecrets: rawSecrets,
           decorations: {
             ambience:
               raw.decorations?.ambience === 'night' || raw.decorations?.ambience === 'rain'
@@ -186,22 +250,59 @@ export class Store {
 
   update(fn: (d: Data) => void): void {
     fn(this.data)
+    this.dirty = true
     this.scheduleSave()
   }
 
   scheduleSave(): void {
+    this.dirty = true
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => this.saveNow(), 200)
   }
 
-  saveNow(): void {
+  saveNow(): boolean {
     if (this.timer) {
       clearTimeout(this.timer)
       this.timer = null
     }
-    const items = this.data.items.map(({ available: _a, ...rest }) => rest)
-    const tmp = this.file + '.tmp'
-    writeFileSync(tmp, JSON.stringify({ ...this.data, items }, null, 2), 'utf8')
-    renameSync(tmp, this.file)
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
+    try {
+      const items = this.data.items.map(({ available: _a, ...rest }) => rest)
+      const tmp = this.file + '.tmp'
+      writeFileSync(tmp, JSON.stringify({ ...this.data, items }, null, 2), 'utf8')
+      renameSync(tmp, this.file)
+      this.dirty = false
+      this.lastSaveError = null
+      return true
+    } catch (err) {
+      const msg = (err as Error)?.message || '写入配置失败'
+      const firstFail = this.lastSaveError === null
+      this.lastSaveError = msg
+      this.dirty = true
+      console.error('[store] saveNow failed', err)
+      if (firstFail) {
+        this.onSaveError?.(`本地数据保存失败，稍后将自动重试（${msg}）`)
+      }
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null
+        if (this.dirty) this.saveNow()
+      }, 3000)
+      return false
+    }
+  }
+
+  dispose(): void {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
+    if (this.dirty) this.saveNow()
   }
 }

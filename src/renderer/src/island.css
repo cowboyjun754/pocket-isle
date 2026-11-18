@@ -877,6 +877,41 @@
   left: 10px;
 }
 
+.island-undo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  pointer-events: auto;
+}
+
+.island-undo-pill.toast-peek {
+  max-width: 134px;
+}
+
+.island-undo-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.island-undo-btn {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid #6b9158;
+  background: #e5f1dc;
+  color: #2c4a21;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.island-undo-btn:hover {
+  background: #d5e7c8;
+}
+
 /* ---------- 悬停控件 ---------- */
 
 .hover-controls {

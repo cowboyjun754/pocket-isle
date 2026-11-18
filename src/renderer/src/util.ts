@@ -1,4 +1,4 @@
-import type { AddResult } from '../../shared/types'
+import type { AddResult, DockItem } from '../../shared/types'
 
 export const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tif', 'tiff', 'heic'])
 
@@ -54,4 +54,49 @@ export function describeResult(r: AddResult): string | null {
   }
   if (r.errors.length) parts.push(r.errors[0] + (r.errors.length > 1 ? ` 等 ${r.errors.length} 项` : ''))
   return parts.length ? parts.join('，') : null
+}
+
+/** 根据当前勾选与搜索过滤状态，确定码头「AI 整理」真正发送的文件范围 */
+export function resolveOrganizeScope(params: {
+  items: DockItem[]
+  filteredItems: DockItem[]
+  selected: Set<string>
+  query: string
+}): {
+  targetIds: string[] | undefined
+  count: number
+  mode: 'selected' | 'filtered' | 'all'
+} {
+  if (params.selected.size > 0) {
+    return {
+      targetIds: [...params.selected],
+      count: params.selected.size,
+      mode: 'selected'
+    }
+  }
+  if (params.query.trim()) {
+    return {
+      targetIds: params.filteredItems.map((i) => i.id),
+      count: params.filteredItems.length,
+      mode: 'filtered'
+    }
+  }
+  return {
+    targetIds: undefined,
+    count: params.items.length,
+    mode: 'all'
+  }
+}
+
+/** 专注目标拆解严格仅附带用户显式勾选的文件（零选中时不静默外发最近文件） */
+export function resolveBreakdownDocIds(focusDocIds: Set<string>): string[] {
+  return [...focusDocIds]
+}
+
+/** 格式化毫秒倒计时为 `MM:SS`（向上取整到秒，负值归零） */
+export function formatDurationMmSs(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000))
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }

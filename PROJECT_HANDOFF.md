@@ -5,12 +5,12 @@
 ## 1. 项目位置与仓库
 - **根目录**：`D:\Pocket Isle`（建议直接将 `D:\Pocket Isle` 作为工作区打开）
 - **GitHub 仓库**：`https://github.com/cowboyjun754/pocket-isle`（分支 `main`）
-- **技术栈**：Electron 33 (`33.4.11`) + React 18 + TypeScript + electron-vite（配置文件为 `electron.vite.config.mjs`）
+- **技术栈**：Electron 45 (`45.3.4`) + React 18 + TypeScript + electron-vite `2.3.0`（配置文件为 `electron.vite.config.mjs`）
 - **一键启动（无命令行黑框）**：
   - 日常唤起：双击根目录 `停靠岛.lnk`（或 `release\停靠岛\停靠岛.exe`）无黑框直达；如已有实例在运行则直接唤醒显示。
-  - 重启切换新版：双击 `启动停靠岛.vbs`（或 `启动停靠岛.bat`）会先温和通过 `--quit` 通知本项目旧实例落盘退出（超时才精准兜底结束 `停靠岛.exe` 或命令行匹配本项目路径的 `electron.exe`），再无窗口拉起最新版。
-  - 打包独立版：源码修改后运行 `npm.cmd run package` 生成 `release/停靠岛/停靠岛.exe` 与 `build/icon.ico`（且 `app.isPackaged === true`，可使用开机自启）。
-- **测试与检查**：`npm.cmd run typecheck`、`npm.cmd test`（Vitest，9 个测试文件 / 共 44 项单测）、`npm.cmd run build`、`npm.cmd run package`
+  - 重启切换新版：双击 `启动停靠岛.vbs`（或 `启动停靠岛.bat`）会先温和通过 `--quit` 通知**当前目录对应完整路径**的旧实例落盘退出（2.5s 超时未退时弹窗由用户决定是否强制关闭），再无窗口拉起最新版（优先运行已打包的 `release\停靠岛\停靠岛.exe`，无打包版时才回退 `electron.exe`）。
+  - 打包独立版：源码修改后运行 `npm.cmd run package` 生成 `release/停靠岛/停靠岛.exe` 与 `build/icon.ico`（使用临时 staging 目录校验后再替换 `resources/app`，且 `app.isPackaged === true` 可用开机自启）。
+- **测试与检查**：`npm.cmd run typecheck`、`npm.cmd test`（Vitest，13 个测试文件 / 共 69 项单测）、`npm.cmd run build`、`npm.cmd run package`
 
 ## 2. 已实现的核心设计（v3）
 1. **左右双侧贴边三段式停靠**（`src/shared/shape.ts`、`src/main/index.ts`）：
@@ -33,7 +33,7 @@
    - 设置页签：通用停靠设置（窗口置顶、开机自启、临时副本容量上限与用量条、左右停靠复位、打开数据目录）与 OpenAI 兼容接口配置（DeepSeek / 通义千问 / OpenAI / 本地 Ollama / LM Studio 免 Key 模板、Vision 开关、连接测试）。
 
 ## 3. 最近修复与美术优化记录
-### 本轮已完成并构建（`typecheck` / `39 tests` / `electron-vite build` 全通过）
+### 历史阶段（早期基线记录，当时为 39 tests）
 1. **栈桥左键拖出、原地/拖离后放回与去重收尾**（`src/main/index.ts`、`src/renderer/src/Island.tsx`、`src/main/dock.ts`、`src/main/dock.test.ts`）：
    - 经实测确认三项拖拽交互（左键拖出、拖离后拖回/原地松手放回、桌面拖回入岛）均已稳定；已移除 `src/main/index.ts` 中 `drag-diag.log` 与 `writeFileSync` 临时调试代码。
    - 补充 `Island.tsx` `handleOutboundDragPosition` 实时同步 `dock:syncDragPassThrough` 避免起拖未出岛时穿透，并在 `Dock.add` 增加 `samePath(i.path, raw)` 避免应用内副本拖回重复入栈。
@@ -46,4 +46,17 @@
    - **码头文件流转效率**：支持文件夹作为快捷引用拖入（`isDir: true` / `ext: 'dir'`）；工具栏新增「清理失效」一键移除原路径失效条目；行内新增「复制」快捷按钮（图片/文本前段/路径到剪贴板）与纯文本/代码弹窗预览（含截断提示）；`+N` 胶囊悬停提示列举被折叠的文件名。
    - **专注自定义时长与 AI 体验**：支持 15/25/45/60 分预设与 1~180 分钟自定义专注时长、1~60 分钟休息时长持久化，计时结束自动弹出系统桌面通知与可关闭的三音柔和铃声；暴露「✦ 联合速览」可选对比侧重方向输入框与 AI 分阶段进度提示。
    - **零黑框启动与本地打包**：新增 `scripts/make-ico.mjs` + `scripts/package-win.mjs` 本地零依赖生成 `build/icon.ico` 与 `release/停靠岛/停靠岛.exe` + 快捷方式 `停靠岛.lnk`，配合 `启动停靠岛.vbs` 彻底去除开机/启动指令框。
-4. **运行目录注意**：用户个人配置与日记/暂存列表保存在 `%APPDATA%\pocket-isle\data.json`（含用户本地配置），排查时注意不要改动或泄露用户隐私配置。
+4. **运行目录注意**：用户个人配置与日记/暂存列表保存在 `%APPDATA%\pocket-isle\data.json`（含用户本地配置与加密凭据），排查时注意不要改动或泄露用户隐私配置。
+
+### 最新代码审查加固（Phase 1 ~ 3，当前实测 12 个测试文件 / 65 项单测全通过）
+1. **AI 安全与发送透明化**：按服务源（`protocol + host + port`）通过 Electron `safeStorage` 加密保管密钥（`src/main/aiSecrets.ts`），配置广播仅传脱敏 `hasApiKey`；「测试连接」直测草稿不覆写已保存配置；专注页未选文件时严格只发目标不带最近 5 份，搜索过滤下「AI 整理筛选」所见即所得；代码复制与预览保留缩进与换行。
+2. **解析诚实度、Worker 线程与异常恢复**：Office/PDF 重解析迁入 `worker_threads`（`src/main/extractWorker.ts` / `src/main/fileExtractor.ts`）并支持并发/总字节预算及中止信号；修正 41 行 Excel 截断状态、纯扫描件 PDF 误判、6 张图超过 4 张上限与目录提示；`Panel.tsx` 收敛为单一 `activeAiTask` 状态机并接收主进程实时阶段进度；`summaryGuard.ts` 严格清洗模型与历史存档结构；`Dock` 串行化导入去重与配额预留，支持 20 秒误删撤销与失败删除 `pendingDeletes` 墓碑对账，默认关闭 `drop-log.txt`。
+3. **Windows 启动、多屏 DPI 与安全功耗加固**：`启动停靠岛.vbs` 精确比对 `ExecutablePath` 且超时由用户确认；`scripts/package-win.mjs` 兼容 Node 18+ 并通过 staging 目录校验替换；`display-metrics-changed`/`display-removed` 后重算贴边与自定义位置面板（`reconcileIslandPosOnDisplayChange` / `clampPanelBoundsToWorkArea`）；`FocusController` 每 15s 落盘检查点；全量 IPC 校验 `sender` 与主 frame 来源；`dock:open` 对可执行脚本弹出安全确认；隐藏/锁屏时停止鼠标轮询，面板缩略图按可见性与 `mtimeMs` 缓存更新。
+
+### Phase 4 前端架构拆解与运行时评估（当前实测 13 个测试文件 / 69 项单测全通过）
+1. **Panel 模块化**（`src/renderer/src/Panel.tsx` + `src/renderer/src/panel/`）：拆分为 `panelShared.tsx`、`useAiTask.ts`、`PreviewModal.tsx`、`DockTab.tsx`、`FocusTab.tsx`、`BuildTab.tsx`、`SettingsTab.tsx`，并消除倒计时格式化重复逻辑（统一复用 `src/renderer/src/util.ts` 的 `formatDurationMmSs`）。
+2. **Island 模块化与单测**（`src/renderer/src/Island.tsx` + `src/renderer/src/island/`）：拆分为 `islandMath.ts`、`islandMath.test.ts`、`islandAssets.ts`、`IslandDecorSvg.tsx`、`ParcelLayer.tsx`、`HitRegionsSvg.tsx`、`useParcelGestures.ts`，100% 保留原有 DOM 结构、CSS 类名、IPC 契约与鼠标/拖拽交互。
+3. **Electron 45 升级与剪贴板 API 适配**：
+   - 将 `electron` 从 `^33.2.0` (`33.4.11`) 升级至 `^45.3.4` (`45.3.4`)；同步调整 [src/main/index.ts](src/main/index.ts) 中的剪贴板读写以适配 Electron 44+ W3C 异步 `Clipboard` / `ClipboardItem` 接口（`clipboard.read()` / `clipboard.write()` / `await clipboard.readText()` / `await clipboard.writeText()`，移除已废弃的 `readImage` / `writeImage`）。
+   - [scripts/package-win.mjs](scripts/package-win.mjs) 兼容 Electron 45 按需下载二进制机制（若缺少 `node_modules/electron/dist/electron.exe`，自动调用 `node_modules/electron/install.js` 补全后再打包）。
+   - 后续迁移备忘：`safeStorage` 同步接口（`isEncryptionAvailable`/`encryptString`/`decryptString`）在 Electron 45 中标记为 `@deprecated`、预计 Electron 46 移除，后续升 46 前需将 [src/main/aiSecrets.ts](src/main/aiSecrets.ts) 与 `safeCodec` 迁至 `*Async()`。

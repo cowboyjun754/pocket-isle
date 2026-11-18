@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   AddResult,
+  AiProgressPayload,
   DecorationState,
+  DockUndoState,
   FocusState,
   IslandMemory,
   IslandPose,
@@ -23,6 +25,7 @@ const api: IsleApi = {
   pasteFromClipboard: () => ipcRenderer.invoke('dock:pasteClipboard'),
   remove: (ids) => ipcRenderer.invoke('dock:remove', ids),
   clear: () => ipcRenderer.invoke('dock:clear'),
+  undoRemove: (token) => ipcRenderer.invoke('dock:undoRemove', token),
   setItemGroup: (ids, group) => ipcRenderer.invoke('dock:setGroup', ids, group),
   open: (id) => ipcRenderer.invoke('dock:open', id),
   reveal: (id) => ipcRenderer.invoke('dock:reveal', id),
@@ -62,17 +65,21 @@ const api: IsleApi = {
   getAppEnv: () => ipcRenderer.invoke('app:getEnv'),
   resetPosition: (side) => ipcRenderer.send('island:resetPos', side),
   openDataDir: () => ipcRenderer.invoke('app:openDataDir'),
+  getAiKeyStatus: (baseUrl) => ipcRenderer.invoke('ai:getKeyStatus', baseUrl),
   saveAiConfig: (cfg) => ipcRenderer.invoke('ai:saveConfig', cfg),
   testAiConnection: (cfg) => ipcRenderer.invoke('ai:test', cfg),
-  aiOrganizeDock: (ids) => ipcRenderer.invoke('ai:organize', ids),
-  aiJointSummary: (ids, focusPrompt) => ipcRenderer.invoke('ai:jointSummary', ids, focusPrompt),
-  aiBreakdownGoal: (goal, docIds, durationMinutes) =>
-    ipcRenderer.invoke('ai:breakdown', goal, docIds, durationMinutes),
-  aiRecommendDecor: (moodPrompt) => ipcRenderer.invoke('ai:recommendDecor', moodPrompt),
+  aiOrganizeDock: (ids, taskId) => ipcRenderer.invoke('ai:organize', ids, taskId),
+  aiJointSummary: (ids, focusPrompt, taskId) =>
+    ipcRenderer.invoke('ai:jointSummary', ids, focusPrompt, taskId),
+  aiBreakdownGoal: (goal, docIds, durationMinutes, taskId) =>
+    ipcRenderer.invoke('ai:breakdown', goal, docIds, durationMinutes, taskId),
+  aiRecommendDecor: (moodPrompt, taskId) => ipcRenderer.invoke('ai:recommendDecor', moodPrompt, taskId),
   cancelAi: () => ipcRenderer.send('ai:cancel'),
 
   // 事件订阅
   onDockChanged: (cb) => listen('dock:changed', cb),
+  onDockUndoChanged: (cb) => listen<[DockUndoState | null]>('dock:undoChanged', cb),
+  onAiProgress: (cb) => listen<[AiProgressPayload]>('ai:progress', cb),
   onPose: (cb) => listen<[IslandPose]>('island:pose', cb),
   onReceived: (cb) => listen<[AddResult]>('island:received', cb),
   onDecorChanged: (cb) => listen<[DecorationState]>('decor:changed', cb),

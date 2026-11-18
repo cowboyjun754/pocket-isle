@@ -4,16 +4,19 @@ import type { Store } from './store'
 
 const DEFAULT_FOCUS_MIN = 25
 const DEFAULT_REST_MIN = 5
+const CHECKPOINT_INTERVAL_MS = 15_000
 
 /**
  * 独立专注与休息计时器（v3）：
  * - 按真实经过的时间（Date.now() 差值）在主进程统一计算；
  * - 锁屏或休眠时自动暂停，恢复后等待用户继续；
+ * - 运行期间每 15 秒保存一次轻量检查点，异常退出时最大回退不超过一个检查点周期；
  * - 计时结束只提示本轮结束，不自动把任务步骤标为已完成，也不与装饰解锁挂钩。
  */
 export class FocusController {
   private ticker: NodeJS.Timeout | null = null
   private lastTickAt = 0
+  private lastCheckpointAt = 0
 
   constructor(
     private store: Store,
@@ -139,7 +142,9 @@ export class FocusController {
 
   private startTicker(): void {
     this.stopTicker()
-    this.lastTickAt = Date.now()
+    const now = Date.now()
+    this.lastTickAt = now
+    this.lastCheckpointAt = now
     this.ticker = setInterval(() => this.tick(), 1000)
   }
 
@@ -184,6 +189,9 @@ export class FocusController {
         })
         this.onFinished?.('rest')
       }
+      this.store.scheduleSave()
+    } else if (Date.now() - this.lastCheckpointAt >= CHECKPOINT_INTERVAL_MS) {
+      this.lastCheckpointAt = Date.now()
       this.store.scheduleSave()
     }
     this.onUpdate(f)

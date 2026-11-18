@@ -14,7 +14,7 @@ const BASE: Settings = {
   alwaysOnTop: true,
   openAtLogin: false,
   copyLimitMB: 2048,
-  ai: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat' }
+  ai: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
 }
 
 describe('applySettingsPatch', () => {

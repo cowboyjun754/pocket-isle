@@ -5,10 +5,12 @@ import {
   OTTER_HOME,
   STAGE,
   VISIBLE_WIDTH,
+  clampPanelBoundsToWorkArea,
   getStageOffsetX,
   isInsideIsland,
   isOnWater,
   isWithinParcelDragZone,
+  reconcileIslandPosOnDisplayChange,
   resolveSnapSide
 } from './shape'
 
@@ -34,6 +36,10 @@ describe('isInsideIsland (horizontal left pier + right island)', () => {
     expect(isInsideIsland(74, 48, 'right', 'full', true)).toBe(true)
     expect(isInsideIsland(172 + 74, 48, 'right', 'peek', true)).toBe(true)
     expect(isInsideIsland(75, 165, 'right', 'full', true)).toBe(true)
+    // 无包裹但存在可点击的撤销浮条时，底部浮条热区在 peek 与 full 下保持可点击
+    expect(isInsideIsland(172 + 80, 195, 'right', 'peek', false, false)).toBe(false)
+    expect(isInsideIsland(172 + 80, 195, 'right', 'peek', false, true)).toBe(true)
+    expect(isInsideIsland(160, 226, 'right', 'full', false, true)).toBe(true)
   })
 
   it('全展开时四角透明区域应穿透', () => {
@@ -135,5 +141,38 @@ describe('resolveSnapSide (edge snap & detach behavior)', () => {
         startWinX: -172
       })
     ).toBe('right')
+  })
+})
+
+describe('reconcileIslandPosOnDisplayChange & clampPanelBoundsToWorkArea', () => {
+  it('分辨率变宽后即使旧中心仍在屏内，right 停靠小岛仍重新贴齐新右边缘', () => {
+    const pos = reconcileIslandPosOnDisplayChange({
+      currentPos: { x: 1600, y: 600 },
+      side: 'right',
+      allWorkAreas: [{ x: 0, y: 0, width: 2560, height: 1400 }],
+      primaryWorkArea: { x: 0, y: 0, width: 2560, height: 1400 }
+    })
+    expect(pos).toEqual({ x: 2560 - STAGE.w, y: 600 })
+  })
+
+  it('拔掉副屏后，原本在副屏上的小岛与自定义位置面板都回到主屏可见工作区', () => {
+    const primary = { x: 0, y: 0, width: 1920, height: 1040 }
+    const islandNext = reconcileIslandPosOnDisplayChange({
+      currentPos: { x: 3520, y: 500 },
+      side: 'right',
+      allWorkAreas: [primary],
+      primaryWorkArea: primary
+    })
+    expect(islandNext.x).toBe(1920 - STAGE.w)
+    expect(islandNext.y).toBeGreaterThanOrEqual(0)
+    expect(islandNext.y).toBeLessThanOrEqual(1040 - STAGE.h)
+
+    const panelNext = clampPanelBoundsToWorkArea(
+      { x: 3000, y: 200, width: 430, height: 580 },
+      [primary],
+      primary
+    )
+    expect(panelNext.x).toBe(1920 - 430 - 8)
+    expect(panelNext.y).toBe(200)
   })
 })

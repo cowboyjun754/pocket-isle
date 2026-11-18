@@ -2,24 +2,31 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  ClipboardItem,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
   Notification,
   powerMonitor,
+  safeStorage,
   screen,
   shell,
   Tray,
   type WebContents
 } from 'electron'
+import { existsSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { extname, join } from 'path'
+import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from '../shared/aiProvider'
 import {
   PANEL,
   STAGE,
+  clampPanelBoundsToWorkArea,
   getStageOffsetX,
   isInsideIsland,
+  reconcileIslandPosOnDisplayChange,
   resolveSnapSide,
   type DockSide,
   type ExpandMode
@@ -27,9 +34,10 @@ import {
 import type {
   AddResult,
   AiBreakdownResult,
-  AiConfig,
+  AiConfigInput,
   AiJointSummaryResult,
   AiOrganizeResult,
+  AiTaskKind,
   DecorationState,
   FocusStep,
   IslandMemory,
@@ -39,9 +47,10 @@ import type {
   Settings,
   SettingsPatch
 } from '../shared/types'
+import { AiCredentialStore, validateAiEndpointUrl, type SecretCodec } from './aiSecrets'
 import {
   breakdownFocusGoal,
-  extractFileSnippet,
+  extractFilesBatch,
   IMAGE_EXTS,
   isAbortError,
   organizeAndSummarize,
@@ -57,6 +66,7 @@ import { FocusController } from './focusTimer'
 import { makeDragIcon, makeTrayIcon } from './icons'
 import { applySettingsPatch } from './settingsRules'
 import { Store } from './store'
+import { disposeExtractWorker, extractTextInWorker } from './workerExtractRunner'
 
 const exitEarly = process.argv.includes('--quit')
 if (!app.requestSingleInstanceLock() || exitEarly) {
@@ -67,6 +77,7 @@ let island: BrowserWindow | null = null
 let panel: BrowserWindow | null = null
 let tray: Tray | null = null
 let store: Store
+let aiSecrets: AiCredentialStore
 let dock: Dock
 let focusCtrl: FocusController
 let quitting = false
@@ -97,7 +108,28 @@ let expandMode: ExpandMode = 'docked'
 let collapseTimer: NodeJS.Timeout | null = null
 let pollTimer: NodeJS.Timeout | null = null
 let activeAiAbort: AbortController | null = null
+const MAX_THUMB_CACHE = 128
 const thumbCache = new Map<string, string | null>()
+const EXECUTABLE_EXTS = new Set([
+  'exe',
+  'msi',
+  'bat',
+  'cmd',
+  'vbs',
+  'vbe',
+  'js',
+  'jse',
+  'wsf',
+  'wsh',
+  'ps1',
+  'psm1',
+  'scr',
+  'com',
+  'lnk',
+  'hta',
+  'reg',
+  'jar'
+])
 const SHORTCUT = 'Control+Alt+Space'
 
 // ---------- 通用 ----------
@@ -117,6 +149,26 @@ function harden(wc: WebContents): void {
   wc.setWindowOpenHandler(() => ({ action: 'deny' }))
 }
 
+async function readClipboardImagePng(): Promise<Buffer | null> {
+  try {
+    const entries = await clipboard.read()
+    for (const item of entries) {
+      const imgMime = item.types.find((t) => t === 'image/png' || t.startsWith('image/'))
+      if (!imgMime) continue
+      const blob = await item.getType(imgMime)
+      if (!(blob instanceof Blob)) continue
+      const raw = Buffer.from(await blob.arrayBuffer())
+      if (!raw.length) continue
+      if (imgMime === 'image/png') return raw
+      const img = nativeImage.createFromBuffer(raw)
+      if (!img.isEmpty()) return img.toPNG()
+    }
+  } catch {
+    /* 剪贴板为空或当前格式不支持图片读取时回退文本检测 */
+  }
+  return null
+}
+
 function loadView(win: BrowserWindow, view: 'island' | 'panel'): void {
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (!app.isPackaged && devUrl) win.loadURL(`${devUrl}#${view}`)
@@ -125,6 +177,13 @@ function loadView(win: BrowserWindow, view: 'island' | 'panel'): void {
 
 function broadcast(channel: string, ...args: unknown[]): void {
   for (const w of [island, panel]) if (w && !w.isDestroyed()) w.webContents.send(channel, ...args)
+}
+
+function publicSettings(): Settings {
+  return {
+    ...store.data.settings,
+    ai: aiSecrets.toPublicAiConfig(store.data.settings.ai)
+  }
 }
 
 /**
@@ -279,7 +338,14 @@ function syncIslandMouseIgnore(forceApply = false, forward = true): boolean {
   const b = island.getBounds()
   const side = currentSide()
   const mode: ExpandMode = side === 'free' ? 'full' : expandMode
-  const inside = isInsideIsland(p.x - b.x, p.y - b.y, side, mode, dock.items.length > 0)
+  const inside = isInsideIsland(
+    p.x - b.x,
+    p.y - b.y,
+    side,
+    mode,
+    dock.items.length > 0,
+    dock.hasActiveUndo()
+  )
 
   if (!inside && justSnapped) {
     justSnapped = false
@@ -297,6 +363,7 @@ function syncIslandMouseIgnore(forceApply = false, forward = true): boolean {
 }
 
 function startPointerPoll(): void {
+  if (pollTimer) return
   pollTimer = setInterval(() => {
     if (!island || island.isDestroyed() || !island.isVisible()) return
     if (movingIsland || dragOutActive) return
@@ -319,17 +386,26 @@ function startPointerPoll(): void {
   }, 33)
 }
 
+function stopPointerPoll(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
 function showIsland(): void {
   if (!island) return
   if (!isPosVisible(store.data.islandPos)) resetPosition('right')
   island.show()
   island.setAlwaysOnTop(store.data.settings.alwaysOnTop, 'screen-saver')
+  startPointerPoll()
   pushPose()
   rebuildTrayMenu()
 }
 
 function hideIsland(): void {
   hidePanel()
+  stopPointerPoll()
   island?.hide()
   rebuildTrayMenu()
 }
@@ -496,6 +572,7 @@ function showPanel(): void {
   panel!.show()
   panel!.focus()
   panel!.webContents.send('dock:changed')
+  panel!.webContents.send('dock:undoChanged', dock.getUndoState())
 }
 
 function hidePanel(): void {
@@ -542,7 +619,7 @@ function rebuildTrayMenu(): void {
       click: (item) => {
         store.update((d) => (d.settings.alwaysOnTop = item.checked))
         island?.setAlwaysOnTop(item.checked, 'screen-saver')
-        broadcast('settings:changed', store.data.settings)
+        broadcast('settings:changed', publicSettings())
       }
     },
     {
@@ -553,7 +630,7 @@ function rebuildTrayMenu(): void {
       click: (item) => {
         store.update((d) => (d.settings.openAtLogin = item.checked))
         app.setLoginItemSettings({ openAtLogin: item.checked })
-        broadcast('settings:changed', store.data.settings)
+        broadcast('settings:changed', publicSettings())
       }
     },
     { label: '打开数据目录', click: () => shell.openPath(app.getPath('userData')) },
@@ -578,14 +655,50 @@ function createTray(): void {
 
 // ---------- IPC ----------
 
+function isTrustedIpcEvent(e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean {
+  const sender = e.sender
+  if (!sender || sender.isDestroyed()) return false
+  const isKnownWindow =
+    (island && !island.isDestroyed() && sender === island.webContents) ||
+    (panel && !panel.isDestroyed() && sender === panel.webContents)
+  if (!isKnownWindow) return false
+  if (!e.senderFrame || e.senderFrame !== sender.mainFrame) return false
+  const url = e.senderFrame.url || ''
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (!app.isPackaged && devUrl && url.startsWith(devUrl)) return true
+  return url.startsWith('file://')
+}
+
 function registerIpc(): void {
   const strArr = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 
-  ipcMain.handle('dock:list', () => dock.listWithStatus())
-  ipcMain.handle('island:getPose', () => currentPose())
+  const handleTrusted = <A extends unknown[], R>(
+    channel: string,
+    fn: (e: Electron.IpcMainInvokeEvent, ...args: A) => R
+  ): void => {
+    ipcMain.handle(channel, (e, ...args) => {
+      if (!isTrustedIpcEvent(e)) {
+        throw new Error(`Untrusted IPC sender on ${channel}`)
+      }
+      return fn(e, ...(args as A))
+    })
+  }
 
-  ipcMain.handle('dock:add', async (_e, paths: unknown): Promise<AddResult> => {
+  const onTrusted = <A extends unknown[]>(
+    channel: string,
+    fn: (e: Electron.IpcMainEvent, ...args: A) => void
+  ): void => {
+    ipcMain.on(channel, (e, ...args) => {
+      if (!isTrustedIpcEvent(e)) return
+      fn(e, ...(args as A))
+    })
+  }
+
+  handleTrusted('dock:list', () => dock.listWithStatus())
+  handleTrusted('island:getPose', () => currentPose())
+
+  handleTrusted('dock:add', async (_e, paths: unknown): Promise<AddResult> => {
     const r = await dock.add(strArr(paths))
     broadcast('dock:changed')
     island?.webContents.send('island:received', r)
@@ -594,14 +707,14 @@ function registerIpc(): void {
     return r
   })
 
-  ipcMain.handle('dock:pasteClipboard', async (): Promise<AddResult> => {
-    const img = clipboard.readImage()
+  handleTrusted('dock:pasteClipboard', async (): Promise<AddResult> => {
+    const imgPng = await readClipboardImagePng()
     let r: AddResult
-    if (!img.isEmpty()) {
+    if (imgPng) {
       const name = buildClipboardFilename('image')
-      r = await dock.addBufferItem(name, img.toPNG(), 'clipboard://image')
+      r = await dock.addBufferItem(name, imgPng, 'clipboard://image')
     } else {
-      const text = clipboard.readText()
+      const text = await clipboard.readText().catch(() => '')
       if (text.trim()) {
         const name = buildClipboardFilename('text', text)
         r = await dock.addBufferItem(name, Buffer.from(text, 'utf8'), 'clipboard://text')
@@ -618,7 +731,7 @@ function registerIpc(): void {
     return r
   })
 
-  ipcMain.handle('dock:remove', async (_e, ids: unknown) => {
+  handleTrusted('dock:remove', async (_e, ids: unknown) => {
     const idList = strArr(ids)
     await dock.remove(idList)
     for (const id of idList) {
@@ -629,34 +742,69 @@ function registerIpc(): void {
     broadcast('dock:changed')
   })
 
-  ipcMain.handle('dock:clear', async () => {
+  handleTrusted('dock:clear', async () => {
     await dock.clear()
     thumbCache.clear()
     broadcast('dock:changed')
   })
 
-  ipcMain.handle('dock:setGroup', (_e, ids: unknown, group: unknown) => {
+  handleTrusted('dock:undoRemove', async (_e, token?: unknown) => {
+    const res = await dock.undoRemove(typeof token === 'string' ? token : undefined)
+    if (res.ok) broadcast('dock:changed')
+    return res
+  })
+
+  handleTrusted('dock:setGroup', (_e, ids: unknown, group: unknown) => {
     dock.setGroup(strArr(ids), typeof group === 'string' ? group : undefined)
     broadcast('dock:changed')
   })
 
-  ipcMain.handle('dock:open', async (_e, id: unknown) => {
+  handleTrusted('dock:open', async (_e, id: unknown) => {
     const it = typeof id === 'string' ? dock.find(id) : undefined
     if (!it) return '条目不存在'
+    if (!existsSync(it.path)) return '文件不存在或已被移动'
+    const ext = (it.ext || extname(it.path).slice(1)).toLowerCase()
+    if (!it.isDir && EXECUTABLE_EXTS.has(ext)) {
+      const owner = panel && !panel.isDestroyed() && panel.isVisible() ? panel : island
+      const opts: Electron.MessageBoxOptions = {
+        type: 'warning',
+        title: '安全确认 · 打开可执行文件',
+        message: `「${it.name}」属于可执行程序或脚本文件`,
+        detail: '直接运行可执行文件存在安全风险。建议先「在文件夹中查看」，确认无误后再运行。',
+        buttons: ['在文件夹中查看', '取消', '仍然运行'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      }
+      const res =
+        owner && !owner.isDestroyed()
+          ? await dialog.showMessageBox(owner, opts)
+          : await dialog.showMessageBox(opts)
+      if (res.response === 0) {
+        shell.showItemInFolder(it.path)
+        return ''
+      }
+      if (res.response !== 2) return ''
+    }
     return shell.openPath(it.path)
   })
 
-  ipcMain.handle('dock:reveal', (_e, id: unknown) => {
+  handleTrusted('dock:reveal', (_e, id: unknown) => {
     const it = typeof id === 'string' ? dock.find(id) : undefined
     if (it) shell.showItemInFolder(it.path)
   })
 
-  ipcMain.handle('dock:thumb', async (_e, id: unknown, size: unknown) => {
+  handleTrusted('dock:thumb', async (_e, id: unknown, size: unknown) => {
     const it = typeof id === 'string' ? dock.find(id) : undefined
     if (!it) return null
     const s = Math.min(Math.max(Number(size) || 64, 16), 1024)
-    const key = `${it.id}:${s}`
-    if (thumbCache.has(key)) return thumbCache.get(key)!
+    const key = `${it.id}:${it.mtimeMs}:${s}`
+    if (thumbCache.has(key)) {
+      const cached = thumbCache.get(key)!
+      thumbCache.delete(key)
+      thumbCache.set(key, cached)
+      return cached
+    }
     let url: string | null = null
     try {
       const img = await nativeImage.createThumbnailFromPath(it.path, { width: s, height: s })
@@ -671,11 +819,17 @@ function registerIpc(): void {
         url = null
       }
     }
+    if (thumbCache.has(key)) thumbCache.delete(key)
+    while (thumbCache.size >= MAX_THUMB_CACHE) {
+      const oldest = thumbCache.keys().next().value
+      if (oldest === undefined) break
+      thumbCache.delete(oldest)
+    }
     thumbCache.set(key, url)
     return url
   })
 
-  ipcMain.handle('dock:readTextPreview', async (_e, id: unknown) => {
+  handleTrusted('dock:readTextPreview', async (_e, id: unknown) => {
     const it = typeof id === 'string' ? dock.find(id) : undefined
     if (!it) return { ok: false, message: '条目不存在' }
     if (it.isDir || it.ext === 'dir' || !TEXT_EXTS.has(it.ext)) {
@@ -689,14 +843,19 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('dock:copyToClipboard', async (_e, id: unknown) => {
+  handleTrusted('dock:copyToClipboard', async (_e, id: unknown) => {
     const it = typeof id === 'string' ? dock.find(id) : undefined
     if (!it) return { ok: false, message: '条目不存在' }
     if (!it.isDir && IMAGE_EXTS.has(it.ext)) {
       try {
         const img = nativeImage.createFromPath(it.path)
         if (!img.isEmpty()) {
-          clipboard.writeImage(img)
+          const png = img.toPNG()
+          await clipboard.write([
+            new ClipboardItem({
+              'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' })
+            })
+          ])
           return { ok: true, message: `已复制图片到剪贴板：${it.name}` }
         }
       } catch {
@@ -706,7 +865,7 @@ function registerIpc(): void {
     if (!it.isDir && TEXT_EXTS.has(it.ext)) {
       try {
         const { content, truncated } = await readTextFilePreview(it.path, 256 * 1024)
-        clipboard.writeText(content)
+        await clipboard.writeText(content)
         return {
           ok: true,
           message: truncated ? `已复制前 256 KB 文本：${it.name}` : `已复制文本内容：${it.name}`
@@ -715,15 +874,19 @@ function registerIpc(): void {
         /* 文本读取失败时回退复制路径 */
       }
     }
-    clipboard.writeText(it.path)
-    return { ok: true, message: `已复制路径：${it.name}` }
+    try {
+      await clipboard.writeText(it.path)
+      return { ok: true, message: `已复制路径：${it.name}` }
+    } catch {
+      return { ok: false, message: `写入剪贴板失败：${it.name}` }
+    }
   })
 
-  ipcMain.handle('dock:copyUsage', () => ({ used: dock.copyUsage(), limit: dock.copyLimit() }))
+  handleTrusted('dock:copyUsage', () => ({ used: dock.copyUsage(), limit: dock.copyLimit() }))
 
   // ---------- 自由桌搭与小岛记忆 ----------
-  ipcMain.handle('decor:get', () => store.data.decorations)
-  ipcMain.handle('decor:set', (_e, next: Partial<DecorationState>) => {
+  handleTrusted('decor:get', () => store.data.decorations)
+  handleTrusted('decor:set', (_e, next: Partial<DecorationState>) => {
     let ambienceChanged = false
     store.update((d) => {
       if (next.ambience === 'day' || next.ambience === 'night' || next.ambience === 'rain') {
@@ -743,8 +906,8 @@ function registerIpc(): void {
     return store.data.decorations
   })
 
-  ipcMain.handle('island:getMemory', () => store.data.islandMemory)
-  ipcMain.handle('island:setMemory', (_e, patch: Partial<IslandMemory>) => {
+  handleTrusted('island:getMemory', () => store.data.islandMemory)
+  handleTrusted('island:setMemory', (_e, patch: Partial<IslandMemory>) => {
     store.update((d) => {
       if (Array.isArray(patch?.sprouts)) {
         d.islandMemory.sprouts = patch.sprouts
@@ -770,8 +933,8 @@ function registerIpc(): void {
   })
 
   // ---------- 专注计时 ----------
-  ipcMain.handle('focus:get', () => focusCtrl.state)
-  ipcMain.handle(
+  handleTrusted('focus:get', () => focusCtrl.state)
+  handleTrusted(
     'focus:control',
     (
       _e,
@@ -779,7 +942,7 @@ function registerIpc(): void {
       durationMinutes?: number
     ) => focusCtrl.control(action, durationMinutes)
   )
-  ipcMain.handle('focus:updatePlan', (_e, goal: unknown, steps: unknown) =>
+  handleTrusted('focus:updatePlan', (_e, goal: unknown, steps: unknown) =>
     focusCtrl.updatePlan(
       typeof goal === 'string' ? goal : '',
       Array.isArray(steps) ? (steps as FocusStep[]) : []
@@ -787,8 +950,8 @@ function registerIpc(): void {
   )
 
   // ---------- 设置与 AI 水獭搭档 ----------
-  ipcMain.handle('settings:get', () => store.data.settings)
-  ipcMain.handle('settings:update', (_e, rawPatch: SettingsPatch): Settings => {
+  handleTrusted('settings:get', () => publicSettings())
+  handleTrusted('settings:update', (_e, rawPatch: SettingsPatch): Settings => {
     const res = applySettingsPatch(store.data.settings, rawPatch, app.isPackaged)
     store.update((d) => {
       d.settings = res.next
@@ -803,28 +966,50 @@ function registerIpc(): void {
       focusCtrl.syncIdleDuration()
     }
     rebuildTrayMenu()
-    broadcast('settings:changed', store.data.settings)
-    return store.data.settings
+    const pub = publicSettings()
+    broadcast('settings:changed', pub)
+    return pub
   })
-  ipcMain.handle('app:getEnv', () => ({
+  handleTrusted('app:getEnv', () => ({
     isPackaged: app.isPackaged,
     shortcut: SHORTCUT
   }))
-  ipcMain.handle('app:openDataDir', async () => {
+  handleTrusted('app:openDataDir', async () => {
     await shell.openPath(app.getPath('userData'))
   })
-  ipcMain.handle('ai:saveConfig', (_e, cfg: AiConfig) => {
+  handleTrusted('ai:getKeyStatus', (_e, baseUrl: unknown) =>
+    aiSecrets.getKeyStatus(typeof baseUrl === 'string' ? baseUrl : '')
+  )
+  handleTrusted('ai:saveConfig', (_e, rawCfg: AiConfigInput) => {
+    const baseUrl = String(rawCfg?.baseUrl ?? '').trim() || DEFAULT_AI_BASE_URL
+    const v = validateAiEndpointUrl(baseUrl)
+    if (!v.ok) {
+      return { ok: false, message: v.message }
+    }
+    const model = String(rawCfg?.model ?? '').trim() || DEFAULT_AI_MODEL
     store.update((d) => {
       d.settings.ai = {
-        baseUrl: String(cfg?.baseUrl ?? '').trim(),
-        apiKey: String(cfg?.apiKey ?? '').trim(),
-        model: String(cfg?.model ?? '').trim(),
-        enableVision: !!cfg?.enableVision
+        baseUrl,
+        model,
+        enableVision: !!rawCfg?.enableVision
       }
     })
-    broadcast('settings:changed', store.data.settings)
+    let persisted = true
+    if (rawCfg?.clearApiKey) {
+      aiSecrets.clearKey(baseUrl)
+    } else if (typeof rawCfg?.apiKey === 'string' && rawCfg.apiKey.trim()) {
+      persisted = aiSecrets.setKey(baseUrl, rawCfg.apiKey.trim()).persisted
+    }
+    broadcast('settings:changed', publicSettings())
+    return persisted
+      ? { ok: true }
+      : { ok: true, message: '配置已保存（当前系统加密不可用，密钥仅保留在本次会话内存中）' }
   })
-  ipcMain.handle('ai:test', (_e, cfg: AiConfig) => testConnection(cfg))
+  handleTrusted('ai:test', (_e, rawCfg: AiConfigInput) => {
+    const resolved = aiSecrets.resolveForInput(rawCfg ?? { baseUrl: '', model: '' })
+    if (!resolved.ok) return { ok: false, message: resolved.message }
+    return testConnection(resolved.cfg)
+  })
 
   const beginAiSignal = (): AbortController => {
     activeAiAbort?.abort()
@@ -857,7 +1042,13 @@ function registerIpc(): void {
     }
   }
 
-  ipcMain.on('ai:cancel', () => {
+  const emitAiProgress = (taskId: unknown, kind: AiTaskKind, stage: string): void => {
+    if (typeof taskId === 'string' && taskId) {
+      broadcast('ai:progress', { taskId, kind, stage })
+    }
+  }
+
+  onTrusted('ai:cancel', () => {
     if (activeAiAbort) {
       activeAiAbort.abort()
       activeAiAbort = null
@@ -865,65 +1056,109 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('ai:organize', async (_e, ids?: string[]): Promise<AiOrganizeResult> => {
-    const ctrl = beginAiSignal()
-    try {
-      const targetIds = Array.isArray(ids) && ids.length ? new Set(ids) : null
-      const targets = dock.items.filter((i) => !targetIds || targetIds.has(i.id))
-      if (!targets.length) return { ok: false, message: '没有可整理的文件' }
-
-      emitOtterReaction({ action: 'read', bubble: '正在读资料整理中...', durationMs: 6000 })
-      const extracted = await Promise.all(
-        targets.map((it) => extractFileSnippet(it, 2400, { encodeImage: visionEncoder }))
-      )
-      const { result, updates } = await organizeAndSummarize(
-        store.data.settings.ai,
-        extracted,
-        ctrl.signal
-      )
-      if (result.ok) {
-        dock.applyAiUpdates(updates)
-        broadcast('dock:changed')
-        emitOtterReaction({
-          action: 'wave',
-          bubble: result.otterBubble || '整理好啦~',
-          durationMs: 3600
-        })
-      } else {
-        emitOtterReaction({ action: 'idle' })
-      }
-      return result
-    } catch (err) {
-      if (ctrl.signal.aborted || isAbortError(err)) {
-        return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
-      }
-      emitOtterReaction({ action: 'idle' })
-      return { ok: false, message: (err as Error).message || 'AI 整理失败' }
-    } finally {
-      endAiSignal(ctrl)
-    }
-  })
-
-  ipcMain.handle(
-    'ai:jointSummary',
-    async (_e, ids: unknown, focusPrompt?: unknown): Promise<AiJointSummaryResult> => {
+  handleTrusted(
+    'ai:organize',
+    async (_e, ids?: string[], taskId?: unknown): Promise<AiOrganizeResult> => {
       const ctrl = beginAiSignal()
       try {
+        const resolved = aiSecrets.resolveForSavedSettings()
+        if (!resolved.ok) return { ok: false, message: resolved.message }
+        const targetIds = Array.isArray(ids) ? new Set(strArr(ids)) : null
+        const targets = targetIds ? dock.items.filter((i) => targetIds.has(i.id)) : dock.items
+        if (!targets.length) return { ok: false, message: '没有可整理的文件' }
+
+        emitOtterReaction({ action: 'read', bubble: '正在读资料整理中...', durationMs: 6000 })
+        const extracted = await extractFilesBatch(targets, {
+          maxChars: 2400,
+          concurrency: 2,
+          enableVision: resolved.cfg.enableVision,
+          encodeImage: visionEncoder,
+          extractTextItem: extractTextInWorker,
+          signal: ctrl.signal,
+          onProgress: (done, total, currentName) =>
+            emitAiProgress(
+              taskId,
+              'organize',
+              `正在解析 (${Math.min(done + 1, total)}/${total})：${currentName}`
+            )
+        })
+        if (ctrl.signal.aborted) {
+          return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
+        }
+        emitAiProgress(taskId, 'organize', '水獭正在归纳分组与生成要点…')
+        const { result, updates } = await organizeAndSummarize(resolved.cfg, extracted, ctrl.signal)
+        if (ctrl.signal.aborted) {
+          return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
+        }
+        if (result.ok) {
+          await dock.applyAiUpdates(updates)
+          broadcast('dock:changed')
+          emitOtterReaction({
+            action: 'wave',
+            bubble: result.otterBubble || '整理好啦~',
+            durationMs: 3600
+          })
+        } else {
+          emitOtterReaction({ action: 'idle' })
+        }
+        return result
+      } catch (err) {
+        if (ctrl.signal.aborted || isAbortError(err)) {
+          return { ok: false, cancelled: true, message: '已取消本次 AI 整理' }
+        }
+        emitOtterReaction({ action: 'idle' })
+        return { ok: false, message: (err as Error).message || 'AI 整理失败' }
+      } finally {
+        endAiSignal(ctrl)
+      }
+    }
+  )
+
+  handleTrusted(
+    'ai:jointSummary',
+    async (
+      _e,
+      ids: unknown,
+      focusPrompt?: unknown,
+      taskId?: unknown
+    ): Promise<AiJointSummaryResult> => {
+      const ctrl = beginAiSignal()
+      try {
+        const resolved = aiSecrets.resolveForSavedSettings()
+        if (!resolved.ok) return { ok: false, message: resolved.message }
         const idList = strArr(ids).slice(0, 6)
         const targets = dock.items.filter((i) => idList.includes(i.id))
         if (targets.length < 2) {
           return { ok: false, message: '请选中 2～6 个文件进行联合速览' }
         }
         emitOtterReaction({ action: 'read', bubble: '正在帮你串读几份资料...', durationMs: 6500 })
-        const extracted = await Promise.all(
-          targets.map((it) => extractFileSnippet(it, 1600, { encodeImage: visionEncoder }))
-        )
+        const extracted = await extractFilesBatch(targets, {
+          maxChars: 1600,
+          concurrency: 2,
+          enableVision: resolved.cfg.enableVision,
+          encodeImage: visionEncoder,
+          extractTextItem: extractTextInWorker,
+          signal: ctrl.signal,
+          onProgress: (done, total, currentName) =>
+            emitAiProgress(
+              taskId,
+              'joint',
+              `正在读取 (${Math.min(done + 1, total)}/${total})：${currentName}`
+            )
+        })
+        if (ctrl.signal.aborted) {
+          return { ok: false, cancelled: true, message: '已取消本次联合速览' }
+        }
+        emitAiProgress(taskId, 'joint', '水獭正在串读并对比生成联合速览…')
         const res = await summarizeDocumentsTogether(
-          store.data.settings.ai,
+          resolved.cfg,
           extracted,
           typeof focusPrompt === 'string' ? focusPrompt : undefined,
           ctrl.signal
         )
+        if (ctrl.signal.aborted) {
+          return { ok: false, cancelled: true, message: '已取消本次联合速览' }
+        }
         if (res.ok) {
           emitOtterReaction({
             action: 'wave',
@@ -946,29 +1181,53 @@ function registerIpc(): void {
     }
   )
 
-  ipcMain.handle(
+  handleTrusted(
     'ai:breakdown',
     async (
       _e,
       goal: string,
       docIds: string[],
-      durationMinutes?: number
+      durationMinutes?: number,
+      taskId?: unknown
     ): Promise<AiBreakdownResult> => {
       const ctrl = beginAiSignal()
       try {
+        const resolved = aiSecrets.resolveForSavedSettings()
+        if (!resolved.ok) return { ok: false, message: resolved.message }
         const idSet = new Set(Array.isArray(docIds) ? docIds : [])
         const docs = dock.items.filter((i) => idSet.has(i.id))
         emitOtterReaction({ action: 'read', bubble: '帮你想想这轮怎么做...', durationMs: 5000 })
-        const extracted = await Promise.all(docs.map((it) => extractFileSnippet(it, 1000)))
+        const extracted = await extractFilesBatch(docs, {
+          maxChars: 1000,
+          concurrency: 2,
+          enableVision: false,
+          extractTextItem: extractTextInWorker,
+          signal: ctrl.signal,
+          onProgress: (done, total, currentName) =>
+            emitAiProgress(
+              taskId,
+              'breakdown',
+              `正在读取资料 (${Math.min(done + 1, total)}/${total})：${currentName}`
+            )
+        })
+        if (ctrl.signal.aborted) {
+          return { ok: false, cancelled: true, message: '已取消本次 AI 拆解' }
+        }
+        const mins =
+          typeof durationMinutes === 'number'
+            ? durationMinutes
+            : (store.data.settings.focusMinutes ?? 25)
+        emitAiProgress(taskId, 'breakdown', `水獭正在拆解 ${mins} 分钟可执行步骤…`)
         const res = await breakdownFocusGoal(
-          store.data.settings.ai,
+          resolved.cfg,
           String(goal || ''),
           extracted,
           ctrl.signal,
-          typeof durationMinutes === 'number'
-            ? durationMinutes
-            : store.data.settings.focusMinutes
+          mins
         )
+        if (ctrl.signal.aborted) {
+          return { ok: false, cancelled: true, message: '已取消本次 AI 拆解' }
+        }
         emitOtterReaction({
           action: 'wave',
           bubble: res.otterBubble || '步骤拆好啦！',
@@ -987,14 +1246,16 @@ function registerIpc(): void {
     }
   )
 
-  ipcMain.handle('ai:recommendDecor', async (_e, moodPrompt?: string) => {
+  handleTrusted('ai:recommendDecor', async (_e, moodPrompt?: string, taskId?: unknown) => {
     const ctrl = beginAiSignal()
     try {
-      const rec = await recommendDecoration(
-        store.data.settings.ai,
-        String(moodPrompt || ''),
-        ctrl.signal
-      )
+      const resolved = aiSecrets.resolveForSavedSettings()
+      if (!resolved.ok) return { ok: false, message: resolved.message }
+      emitAiProgress(taskId, 'decor', '水獭正在挑选中意的桌搭方案…')
+      const rec = await recommendDecoration(resolved.cfg, String(moodPrompt || ''), ctrl.signal)
+      if (ctrl.signal.aborted) {
+        return { ok: false, cancelled: true, message: '已取消本次搭配推荐' }
+      }
       store.update((d) => {
         d.decorations = rec.state
         d.islandMemory.lampLit = null
@@ -1014,11 +1275,11 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.on('island:setExpandMode', (_e, m: unknown) => {
+  onTrusted('island:setExpandMode', (_e, m: unknown) => {
     if (m === 'docked' || m === 'peek' || m === 'full') setMode(m)
   })
 
-  ipcMain.on('island:holdExpand', (_e, rawMs: unknown) => {
+  onTrusted('island:holdExpand', (_e, rawMs: unknown) => {
     const ms = Math.min(Math.max(Number(rawMs) || 0, 0), 8000)
     if (ms <= 0) return
     holdExpandUntil = Math.max(holdExpandUntil, Date.now() + ms)
@@ -1027,12 +1288,12 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.on('dock:syncDragPassThrough', () => {
+  onTrusted('dock:syncDragPassThrough', () => {
     if (!dragOutActive || !island || island.isDestroyed()) return
     syncIslandMouseIgnore(false, false)
   })
 
-  ipcMain.on('dock:startDrag', (e, ids: unknown, rawKind?: unknown) => {
+  onTrusted('dock:startDrag', (e, ids: unknown, rawKind?: unknown) => {
     const files = dock.pathsFor(strArr(ids))
     if (!files.length) {
       e.sender.send('dock:dragEnded')
@@ -1079,7 +1340,7 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.on('island:beginMove', () => {
+  onTrusted('island:beginMove', () => {
     if (!island || island.isDestroyed()) return
     movingIsland = true
     cancelCollapse()
@@ -1118,7 +1379,7 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.on('island:stepMove', () => {
+  onTrusted('island:stepMove', () => {
     if (!island || island.isDestroyed() || !dragOrigin || !movingIsland) return
     const now = screen.getCursorScreenPoint()
     const nx = Math.round(dragOrigin.winX + (now.x - dragOrigin.curX))
@@ -1130,7 +1391,7 @@ function registerIpc(): void {
     if (panel?.isVisible() && !panelCustomMoved) positionPanelAt(nx, ny, dragOrigin)
   })
 
-  ipcMain.on('island:endMove', () => {
+  onTrusted('island:endMove', () => {
     const prevOrigin = dragOrigin
     dragOrigin = null
     if (!movingIsland) return
@@ -1138,17 +1399,17 @@ function registerIpc(): void {
     snapAfterMove(prevOrigin)
   })
 
-  ipcMain.handle('panel:getPinned', () => panelPinned)
-  ipcMain.handle('panel:setPinned', (_e, next: unknown) => {
+  handleTrusted('panel:getPinned', () => panelPinned)
+  handleTrusted('panel:setPinned', (_e, next: unknown) => {
     panelPinned = !!next
     broadcast('panel:pinnedChanged', panelPinned)
     return panelPinned
   })
 
-  ipcMain.on('panel:toggle', togglePanel)
-  ipcMain.on('panel:hide', hidePanel)
-  ipcMain.on('island:hide', hideIsland)
-  ipcMain.on('island:resetPos', (_e, side: unknown) => {
+  onTrusted('panel:toggle', togglePanel)
+  onTrusted('panel:hide', hidePanel)
+  onTrusted('island:hide', hideIsland)
+  onTrusted('island:resetPos', (_e, side: unknown) => {
     if (side === 'left' || side === 'right') {
       resetPosition(side)
       showIsland()
@@ -1171,13 +1432,31 @@ app.whenReady().then(() => {
   if (exitEarly || !app.hasSingleInstanceLock()) return
   app.setAppUserModelId('local.pocket-isle')
   const userData = app.getPath('userData')
-  store = new Store(userData)
+  store = new Store(userData, {
+    onSaveError: (msg) => {
+      if (panel && !panel.isDestroyed() && panel.isVisible()) {
+        emitOtterReaction({ action: 'idle', bubble: msg, durationMs: 4000 }, true)
+      }
+    }
+  })
+  const safeCodec: SecretCodec = {
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    encrypt: (plain: string) => safeStorage.encryptString(plain).toString('base64'),
+    decrypt: (cipher: string) => safeStorage.decryptString(Buffer.from(cipher, 'base64'))
+  }
+  aiSecrets = new AiCredentialStore(store, safeCodec)
+  aiSecrets.migrateLegacyKey()
   dock = new Dock(
     store,
     join(userData, 'dock-copies'),
     [tmpdir(), app.getPath('temp')],
-    join(userData, 'drop-log.txt')
+    join(userData, 'drop-log.txt'),
+    {
+      enableDropLog: process.env.POCKET_ISLE_DROP_LOG === '1',
+      onUndoChanged: (u) => broadcast('dock:undoChanged', u)
+    }
   )
+  void dock.reconcileCopies()
   focusCtrl = new FocusController(
     store,
     (f) => broadcast('focus:changed', f),
@@ -1203,15 +1482,64 @@ app.whenReady().then(() => {
   createTray()
   startPointerPoll()
 
-  powerMonitor.on('lock-screen', () => focusCtrl.pauseForSystemSuspend())
-  powerMonitor.on('suspend', () => focusCtrl.pauseForSystemSuspend())
+  powerMonitor.on('lock-screen', () => {
+    focusCtrl.pauseForSystemSuspend()
+    stopPointerPoll()
+  })
+  powerMonitor.on('suspend', () => {
+    focusCtrl.pauseForSystemSuspend()
+    stopPointerPoll()
+  })
+  powerMonitor.on('unlock-screen', () => {
+    if (island && !island.isDestroyed() && island.isVisible()) startPointerPoll()
+  })
+  powerMonitor.on('resume', () => {
+    if (island && !island.isDestroyed() && island.isVisible()) startPointerPoll()
+  })
 
   if (!globalShortcut.register(SHORTCUT, toggleIsland)) {
     console.warn(`[shortcut] ${SHORTCUT} 被占用，请使用托盘菜单`)
   }
 
   const fixPos = (): void => {
-    if (island && !isPosVisible(store.data.islandPos)) resetPosition(currentSide())
+    if (!island || island.isDestroyed()) return
+    const allWorkAreas = screen.getAllDisplays().map((d) => d.workArea)
+    const primaryWorkArea = screen.getPrimaryDisplay().workArea
+    const side = currentSide()
+    const curBounds = island.getBounds()
+    const nextPos = reconcileIslandPosOnDisplayChange({
+      currentPos: store.data.islandPos ?? { x: curBounds.x, y: curBounds.y },
+      side,
+      allWorkAreas,
+      primaryWorkArea
+    })
+    store.update((d) => {
+      d.islandPos = nextPos
+    })
+    island.setPosition(Math.round(nextPos.x), Math.round(nextPos.y))
+    pushPose()
+
+    if (panel && !panel.isDestroyed() && panel.isVisible()) {
+      if (!panelCustomMoved) {
+        positionPanelAt(nextPos.x, nextPos.y)
+      } else {
+        const pb = panel.getBounds()
+        const clamped = clampPanelBoundsToWorkArea(pb, allWorkAreas, primaryWorkArea)
+        positioningPanel = true
+        ignorePanelMoveUntil = Date.now() + 140
+        try {
+          if (clamped.width === pb.width && clamped.height === pb.height) {
+            panel.setPosition(clamped.x, clamped.y)
+          } else {
+            panel.setBounds(clamped)
+            lastPanelSize = { w: clamped.width, h: clamped.height }
+          }
+        } finally {
+          positioningPanel = false
+          ignorePanelMoveUntil = Date.now() + 140
+        }
+      }
+    }
   }
   screen.on('display-removed', fixPos)
   screen.on('display-metrics-changed', fixPos)
@@ -1227,6 +1555,8 @@ app.on('before-quit', () => {
   dragOrigin = null
   focusCtrl?.dispose()
   cancelCollapse()
+  disposeExtractWorker()
   globalShortcut.unregisterAll()
-  store?.saveNow()
+  dock?.flushPendingDeletesSync()
+  store?.dispose()
 })

@@ -9,13 +9,20 @@ packagedExe = dir & "\release\" & appName & "\" & exeName
 devExe = dir & "\node_modules\electron\dist\electron.exe"
 
 Sub VisitMatchingProcesses(shouldTerminate, foundFlag)
-  Dim svc, procs, p, cmd
+  Dim svc, procs, p, cmd, exePath, isTarget
   foundFlag = False
   Set svc = GetObject("winmgmts:\\.\root\cimv2")
-  Set procs = svc.ExecQuery("SELECT ProcessId, Name, CommandLine FROM Win32_Process WHERE Name = '" & exeName & "' OR Name = 'electron.exe'")
+  Set procs = svc.ExecQuery("SELECT ProcessId, Name, ExecutablePath, CommandLine FROM Win32_Process WHERE Name = '" & exeName & "' OR Name = 'electron.exe'")
   For Each p In procs
+    exePath = "" & p.ExecutablePath
     cmd = "" & p.CommandLine
-    If LCase(p.Name) = LCase(exeName) Or InStr(1, cmd, dir, 1) > 0 Then
+    isTarget = False
+    If LCase(p.Name) = LCase(exeName) Then
+      If LCase(exePath) = LCase(packagedExe) Then isTarget = True
+    ElseIf LCase(p.Name) = "electron.exe" Then
+      If LCase(exePath) = LCase(devExe) And InStr(1, cmd, dir, 1) > 0 Then isTarget = True
+    End If
+    If isTarget Then
       foundFlag = True
       If shouldTerminate Then
         On Error Resume Next
@@ -27,7 +34,7 @@ Sub VisitMatchingProcesses(shouldTerminate, foundFlag)
 End Sub
 
 Sub RestartOldInstance()
-  Dim running, i
+  Dim running, i, choice
   VisitMatchingProcesses False, running
   If Not running Then Exit Sub
 
@@ -37,11 +44,16 @@ Sub RestartOldInstance()
     sh.Run """" & devExe & """ . --quit", 0, True
   End If
 
-  For i = 1 To 12
+  For i = 1 To 25
     VisitMatchingProcesses False, running
     If Not running Then Exit Sub
     WScript.Sleep 100
   Next
+
+  choice = MsgBox("Old Pocket Isle instance in this folder is still shutting down." & vbCrLf & "Force close it and start the new instance? (Choose No to keep it running.)", 52, "Pocket Isle")
+  If choice <> 6 Then
+    WScript.Quit 0
+  End If
 
   VisitMatchingProcesses True, running
   WScript.Sleep 150

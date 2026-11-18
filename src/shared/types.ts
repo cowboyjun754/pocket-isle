@@ -12,6 +12,7 @@ export interface FileSummary {
   bullets: string[]
   attention?: string
   readStatus: 'full' | 'partial' | 'meta-only'
+  readNote?: string
   updatedAt: number
 }
 
@@ -75,9 +76,42 @@ export interface FocusState {
 
 export interface AiConfig {
   baseUrl: string
-  apiKey: string
   model: string
   enableVision?: boolean
+  hasApiKey?: boolean
+  requiresKey?: boolean
+}
+
+export interface AiConfigInput {
+  baseUrl: string
+  model: string
+  enableVision?: boolean
+  /** 留空且 clearApiKey!==true 时沿用当前源已存密钥；非空则更新密钥 */
+  apiKey?: string
+  /** 显式清除当前源已保存的密钥 */
+  clearApiKey?: boolean
+}
+
+export interface AiKeyStatus {
+  origin: string
+  hasApiKey: boolean
+  requiresKey: boolean
+  valid: boolean
+  message?: string
+}
+
+export interface DockUndoState {
+  token: string
+  count: number
+  copyCount: number
+  label: string
+  expiresAt: number
+}
+
+export interface UndoResult {
+  ok: boolean
+  restored: number
+  message: string
 }
 
 export interface Settings {
@@ -140,6 +174,22 @@ export interface AiBreakdownResult {
   otterBubble?: string
 }
 
+export type AiTaskKind = 'organize' | 'joint' | 'breakdown' | 'decor'
+
+export interface AiProgressPayload {
+  taskId: string
+  kind: AiTaskKind
+  stage: string
+}
+
+export interface AiFileReadReceipt {
+  id: string
+  name: string
+  readStatus: 'full' | 'partial' | 'meta-only'
+  readNote?: string
+  imageAttached?: boolean
+}
+
 export interface AiJointSummaryResult {
   ok: boolean
   cancelled?: boolean
@@ -147,6 +197,7 @@ export interface AiJointSummaryResult {
   title?: string
   markdown?: string
   otterBubble?: string
+  files?: AiFileReadReceipt[]
 }
 
 export interface IsleApi {
@@ -156,6 +207,7 @@ export interface IsleApi {
   pasteFromClipboard(): Promise<AddResult>
   remove(ids: string[]): Promise<void>
   clear(): Promise<void>
+  undoRemove(token?: string): Promise<UndoResult>
   setItemGroup(ids: string[], group: string | undefined): Promise<void>
   /** 返回空字符串表示成功，否则为错误信息 */
   open(id: string): Promise<string>
@@ -198,16 +250,27 @@ export interface IsleApi {
   getAppEnv(): Promise<AppEnv>
   resetPosition(side: 'right' | 'left'): void
   openDataDir(): Promise<void>
-  saveAiConfig(cfg: AiConfig): Promise<void>
-  testAiConnection(cfg: AiConfig): Promise<{ ok: boolean; message: string }>
-  aiOrganizeDock(ids?: string[]): Promise<AiOrganizeResult>
-  aiJointSummary(ids: string[], focusPrompt?: string): Promise<AiJointSummaryResult>
-  aiBreakdownGoal(goal: string, docIds: string[], durationMinutes?: number): Promise<AiBreakdownResult>
-  aiRecommendDecor(moodPrompt?: string): Promise<{ ok: boolean; cancelled?: boolean; message: string }>
+  getAiKeyStatus(baseUrl: string): Promise<AiKeyStatus>
+  saveAiConfig(cfg: AiConfigInput): Promise<{ ok: boolean; message?: string }>
+  testAiConnection(cfg: AiConfigInput): Promise<{ ok: boolean; message: string }>
+  aiOrganizeDock(ids?: string[], taskId?: string): Promise<AiOrganizeResult>
+  aiJointSummary(ids: string[], focusPrompt?: string, taskId?: string): Promise<AiJointSummaryResult>
+  aiBreakdownGoal(
+    goal: string,
+    docIds: string[],
+    durationMinutes?: number,
+    taskId?: string
+  ): Promise<AiBreakdownResult>
+  aiRecommendDecor(
+    moodPrompt?: string,
+    taskId?: string
+  ): Promise<{ ok: boolean; cancelled?: boolean; message: string }>
   cancelAi(): void
 
   // 事件订阅
   onDockChanged(cb: () => void): () => void
+  onDockUndoChanged(cb: (u: DockUndoState | null) => void): () => void
+  onAiProgress(cb: (p: AiProgressPayload) => void): () => void
   onPose(cb: (pose: IslandPose) => void): () => void
   onReceived(cb: (r: AddResult) => void): () => void
   onDecorChanged(cb: (d: DecorationState) => void): () => void
