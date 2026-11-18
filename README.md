@@ -1,5 +1,7 @@
 # Pocket Isle (停靠岛)
 
+**English** | [简体中文](./README.zh-CN.md)
+
 > A hand-painted watercolor floating island docked at the edge of your Windows desktop — combining **zero-friction file staging**, **cozy interactive desktop companionship**, a **Pomodoro focus timer**, and an **AI otter assistant** in one lightweight Electron app.
 
 ---
@@ -8,7 +10,7 @@
 
 - **Project Name**: Pocket Isle (`停靠岛`)
 - **Platform**: Windows 10 / 11 desktop widget & utility (`Electron 45` · `React 18` · `TypeScript` · `electron-vite` · `Vitest`)
-- **App UI Language**: Simplified Chinese (`zh-CN`), while repository documentation, scripts, tests, and code comments are maintained in English.
+- **App UI Language**: Live **Simplified Chinese (`zh-CN`) / English (`en`)** switcher in Settings (updates the floating island, control panel, tray menu, dialogs, notifications, and AI prompts without restart).
 - **Design Principles**: **Never alter original disk files** · **Lightweight & unobtrusive** · **100% functional offline without AI**
 
 ---
@@ -39,7 +41,7 @@ Everyday work on Windows often creates small friction points:
   - **Safe Storage Policy**: Normal local paths are stored as references without copying; items from `%TEMP%`, app cache directories, or the clipboard are safely copied into `%APPDATA%\pocket-isle\dock-copies` (configurable quota, default `2 GB`, with pre-reserved atomic concurrency checks and tombstone cleanup).
 - **Dual Mouse Gestures**:
   - **Left-drag a parcel**: Invokes native OS `webContents.startDrag` to drop files directly into chat windows, desktops, or browser upload inputs.
-  - **Right-drag into the sea** (or click **`🌊 扔海里`** on the hover card): An animated hand lifts the parcel and drops it into the water with ripples, removing only the staged entry / app-managed copy (**original disk files are never deleted**), with a 20-second undo pill/banner.
+  - **Right-drag into the sea** (or click **`🌊 Toss in sea`** / **`🌊 扔海里`** on the hover card): An animated hand lifts the parcel and drops it into the water with ripples, removing only the staged entry / app-managed copy (**original disk files are never deleted**), with a 20-second undo pill/banner.
 - **430×580 Control Panel** (right-click or double-click the pier):
   - Supports **`📌`** focus-pinning and native titlebar dragging.
   - Includes keyword search (`Ctrl+F`), inline group editing, image thumbnails (cached cleanly by `mtimeMs`), 64 KB plain-text/code preview modal, clipboard copy actions, and reveal-in-Explorer.
@@ -55,8 +57,8 @@ Everyday work on Windows often creates small friction points:
   - Extracts `.docx` paragraph XML, `.pptx` slide text, `.xlsx` sheet previews (workbook sheets, shared strings, first 40 rows), and `.pdf` `FlateDecode` streams / `ToUnicode` CMap text (image-only PDFs are reported honestly as `meta-only`).
   - Optional compressed **Vision** image thumbnail analysis.
 - **Cancellable AI Workflows**:
-  - **AI Organize (`✦ AI 整理`)**: Groups staged items (selected / search-filtered / all) and generates concise summaries & cautions.
-  - **Joint Summary (`✦ 联合速览`)**: Cross-reads 2–6 selected files with an optional focus direction prompt and produces a copyable Markdown card with honest file-read receipts.
+  - **AI Organize (`✦ AI Organize` / `✦ AI 整理`)**: Groups staged items (selected / search-filtered / all) and generates concise summaries & cautions.
+  - **Joint Summary (`✦ Joint Summary` / `✦ 联合速览`)**: Cross-reads 2–6 selected files with an optional focus direction prompt and produces a copyable Markdown card with honest file-read receipts.
   - **Focus Breakdown**: Turns a focus goal plus explicitly selected documents into 1 target and 3 checkable micro-steps.
   - **Decor Recommender**: Suggests island decorations and ambience matching your mood prompt.
 - **OpenAI-Compatible Endpoints & Strict Origin Secrets**:
@@ -89,10 +91,11 @@ Everyday work on Windows often creates small friction points:
   │   └── index.ts                # Sandboxed contextBridge window.isle API
   ├── shared/
   │   ├── types.ts                # Shared IPC contracts & domain models
+  │   ├── i18n.ts                 # Typed zh-CN / en localization dictionaries & runtime locale resolver
   │   ├── shape.ts                # Stage geometry, hit regions & multi-display clamping math
   │   ├── dropPaths.ts            # Drag-and-drop payload extraction & dropEffect rules
   │   ├── parcelKind.ts           # Extension-to-parcel sprite mapping
-  │   └── aiProvider.ts           # Provider origin normalization & display metadata
+  │   └── aiProvider.ts           # Provider origin normalization & locale-aware presets/metadata
   └── renderer/src/
       ├── Island.tsx              # Desktop island coordinator
       ├── island/                 # Modularized stage math, PNG assets, parcel gestures, SVG decor & hit regions
@@ -145,7 +148,7 @@ For silent relaunches on Windows without leaving a console window open, you can 
 # Strict TypeScript check
 npm run typecheck
 
-# Unit test suite (13 test files, 69 tests)
+# Unit test suite (14 test files, 77 tests)
 npm test
 
 # Production build (main + preload + renderer)
