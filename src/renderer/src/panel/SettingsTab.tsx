@@ -1,6 +1,6 @@
 import type { MutableRefObject } from 'react'
 import { getAiPresets } from '../../../shared/aiProvider'
-import { getMessages } from '../../../shared/i18n'
+import { SUPPORTED_LOCALES, getMessages } from '../../../shared/i18n'
 import type {
   AiConfig,
   AiKeyStatus,
@@ -67,36 +67,27 @@ export function SettingsTab(props: SettingsTabProps): JSX.Element {
       <div className="settings-card">
         <div className="section-label">{sm.generalTitle}</div>
 
-        <div className="toggle-row is-static">
+        <div className="toggle-row is-stacked">
           <div>
             <div className="toggle-title">{sm.languageTitle}</div>
             <div className="toggle-desc">{sm.languageDesc}</div>
           </div>
           <div className="preset-btns lang-switch-btns">
-            <button
-              type="button"
-              className={locale === 'zh-CN' ? 'active' : ''}
-              onClick={() =>
-                onApplySettingsPatch(
-                  { locale: 'zh-CN' },
-                  getMessages('zh-CN').panel.settings.languageSwitchedZh
-                )
-              }
-            >
-              简体中文
-            </button>
-            <button
-              type="button"
-              className={locale === 'en' ? 'active' : ''}
-              onClick={() =>
-                onApplySettingsPatch(
-                  { locale: 'en' },
-                  getMessages('en').panel.settings.languageSwitchedEn
-                )
-              }
-            >
-              English
-            </button>
+            {SUPPORTED_LOCALES.map((loc) => (
+              <button
+                key={loc.id}
+                type="button"
+                className={locale === loc.id ? 'active' : ''}
+                onClick={() =>
+                  onApplySettingsPatch(
+                    { locale: loc.id },
+                    getMessages(loc.id).panel.settings.languageSwitched
+                  )
+                }
+              >
+                {loc.label}
+              </button>
+            ))}
           </div>
         </div>
 

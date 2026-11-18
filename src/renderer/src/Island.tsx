@@ -189,7 +189,7 @@ export function Island(): JSX.Element {
   })
 
   useEffect(() => {
-    document.documentElement.lang = locale === 'en' ? 'en' : 'zh-CN'
+    document.documentElement.lang = locale
     document.title = getMessages(locale).appName
   }, [locale])
 

@@ -164,7 +164,7 @@ export function Panel(): JSX.Element {
   })
 
   useEffect(() => {
-    document.documentElement.lang = locale === 'en' ? 'en' : 'zh-CN'
+    document.documentElement.lang = locale
     document.title = getMessages(locale).appName
   }, [locale])
 
@@ -253,7 +253,7 @@ export function Panel(): JSX.Element {
     return [...map.entries()].sort((a, b) => {
       if (!a[0]) return 1
       if (!b[0]) return -1
-      return a[0].localeCompare(b[0], locale === 'en' ? 'en' : 'zh-CN')
+      return a[0].localeCompare(b[0], locale)
     })
   })()
 

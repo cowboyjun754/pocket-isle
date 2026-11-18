@@ -76,11 +76,27 @@ describe('applySettingsPatch', () => {
     const sameEn = applySettingsPatch(toEn.next, { locale: 'en' }, false)
     expect(sameEn.localeChanged).toBe(false)
 
-    const toZh = applySettingsPatch(toEn.next, { locale: 'zh-CN' }, false)
+    const toJa = applySettingsPatch(toEn.next, { locale: 'ja' }, false)
+    expect(toJa.next.locale).toBe('ja')
+    expect(toJa.localeChanged).toBe(true)
+
+    const toEs = applySettingsPatch(toJa.next, { locale: 'es' }, false)
+    expect(toEs.next.locale).toBe('es')
+    expect(toEs.localeChanged).toBe(true)
+
+    const toZhTw = applySettingsPatch(toEs.next, { locale: 'zh-TW' }, false)
+    expect(toZhTw.next.locale).toBe('zh-TW')
+    expect(toZhTw.localeChanged).toBe(true)
+
+    const toKo = applySettingsPatch(toZhTw.next, { locale: 'ko' }, false)
+    expect(toKo.next.locale).toBe('ko')
+    expect(toKo.localeChanged).toBe(true)
+
+    const toZh = applySettingsPatch(toKo.next, { locale: 'zh-CN' }, false)
     expect(toZh.next.locale).toBe('zh-CN')
     expect(toZh.localeChanged).toBe(true)
 
-    const invalid = applySettingsPatch(BASE, { locale: 'es' as never }, false)
+    const invalid = applySettingsPatch(BASE, { locale: 'fr' as never }, false)
     expect(invalid.next.locale).toBe('zh-CN')
     expect(invalid.localeChanged).toBe(false)
   })

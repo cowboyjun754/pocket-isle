@@ -6,7 +6,7 @@ export type DecorationId = 'flowers' | 'bench' | 'lamp' | 'tree' | 'cabin' | 'wi
 export type OtterAction = 'idle' | 'receive' | 'read' | 'wave' | 'rest'
 export type AmbienceMode = 'day' | 'night' | 'rain'
 export type ParcelKind = 'envelope' | 'box' | 'scroll'
-export type AppLocale = 'zh-CN' | 'en'
+export type AppLocale = 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'es'
 
 export interface FileSummary {
   brief: string
@@ -126,7 +126,7 @@ export interface Settings {
   restMinutes?: number
   /** Play sound & desktop notification on focus/rest completion */
   focusNotify?: boolean
-  /** Interface language ('zh-CN' | 'en') */
+  /** Interface language */
   locale?: AppLocale
   ai: AiConfig
 }

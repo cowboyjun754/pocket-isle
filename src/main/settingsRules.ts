@@ -1,4 +1,4 @@
-import { resolveLocale } from '../shared/i18n'
+import { isSupportedLocale, resolveLocale } from '../shared/i18n'
 import type { Settings, SettingsPatch } from '../shared/types'
 
 export const COPY_LIMIT_MIN_MB = 64
@@ -67,7 +67,7 @@ export function applySettingsPatch(
     next.focusNotify = patch.focusNotify
   }
 
-  if (patch.locale === 'zh-CN' || patch.locale === 'en') {
+  if (isSupportedLocale(patch.locale)) {
     const prevLocale = resolveLocale(current.locale)
     if (patch.locale !== prevLocale) {
       localeChanged = true

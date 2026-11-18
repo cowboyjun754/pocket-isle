@@ -10,7 +10,7 @@
 
 - **Project Name**: Pocket Isle (`停靠岛`)
 - **Platform**: Windows 10 / 11 desktop widget & utility (`Electron 45` · `React 18` · `TypeScript` · `electron-vite` · `Vitest`)
-- **App UI Language**: Live **Simplified Chinese (`zh-CN`) / English (`en`)** switcher in Settings (updates the floating island, control panel, tray menu, dialogs, notifications, and AI prompts without restart).
+- **App UI Language**: Live switcher supporting **Simplified Chinese (`zh-CN`), Traditional Chinese (`zh-TW`), English (`en`), Japanese (`ja`), Korean (`ko`), and Spanish (`es`)** in **⚙ Settings → General & Docking** or the **System Tray → Language** menu (updates the floating island, control panel, tray menu, dialogs, notifications, and AI prompts without restart).
 - **Design Principles**: **Never alter original disk files** · **Lightweight & unobtrusive** · **100% functional offline without AI**
 
 ---

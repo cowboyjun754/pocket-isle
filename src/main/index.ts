@@ -20,7 +20,7 @@ import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { extname, join } from 'path'
 import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from '../shared/aiProvider'
-import { getMessages, resolveLocale } from '../shared/i18n'
+import { SUPPORTED_LOCALES, getMessages, resolveLocale } from '../shared/i18n'
 import {
   PANEL,
   STAGE,
@@ -599,10 +599,37 @@ function togglePanel(): void {
 
 // ---------- System Tray ----------
 
+function applySettingsUpdate(rawPatch: SettingsPatch): Settings {
+  const res = applySettingsPatch(store.data.settings, rawPatch, app.isPackaged)
+  store.update((d) => {
+    d.settings = res.next
+  })
+  if (res.alwaysOnTopChanged) {
+    island?.setAlwaysOnTop(res.next.alwaysOnTop, 'screen-saver')
+  }
+  if (res.openAtLoginChanged) {
+    app.setLoginItemSettings({ openAtLogin: res.next.openAtLogin })
+  }
+  if (res.localeChanged) {
+    const m = getMessages(res.next.locale)
+    island?.setTitle(m.appName)
+    panel?.setTitle(m.appName)
+    tray?.setToolTip(m.tray.tooltip)
+  }
+  if (typeof rawPatch?.focusMinutes === 'number') {
+    focusCtrl.syncIdleDuration()
+  }
+  rebuildTrayMenu()
+  const pub = publicSettings()
+  broadcast('settings:changed', pub)
+  return pub
+}
+
 function rebuildTrayMenu(): void {
   if (!tray) return
   const s = store.data.settings
-  const t = getMessages(currentLocale()).tray
+  const loc = currentLocale()
+  const t = getMessages(loc).tray
   const side = currentSide()
   const menu = Menu.buildFromTemplate([
     { label: island?.isVisible() ? t.hideIsland : t.showIsland, click: toggleIsland },
@@ -624,22 +651,23 @@ function rebuildTrayMenu(): void {
       label: t.alwaysOnTop,
       type: 'checkbox',
       checked: s.alwaysOnTop,
-      click: (item) => {
-        store.update((d) => (d.settings.alwaysOnTop = item.checked))
-        island?.setAlwaysOnTop(item.checked, 'screen-saver')
-        broadcast('settings:changed', publicSettings())
-      }
+      click: (item) => applySettingsUpdate({ alwaysOnTop: item.checked })
     },
     {
       label: app.isPackaged ? t.openAtLoginReady : t.openAtLoginPackagedOnly,
       type: 'checkbox',
       enabled: app.isPackaged,
       checked: s.openAtLogin,
-      click: (item) => {
-        store.update((d) => (d.settings.openAtLogin = item.checked))
-        app.setLoginItemSettings({ openAtLogin: item.checked })
-        broadcast('settings:changed', publicSettings())
-      }
+      click: (item) => applySettingsUpdate({ openAtLogin: item.checked })
+    },
+    {
+      label: t.languageMenu,
+      submenu: SUPPORTED_LOCALES.map((entry) => ({
+        label: entry.label,
+        type: 'radio',
+        checked: loc === entry.id,
+        click: () => applySettingsUpdate({ locale: entry.id })
+      }))
     },
     { label: t.openDataDir, click: () => shell.openPath(app.getPath('userData')) },
     { type: 'separator' },
@@ -966,31 +994,7 @@ function registerIpc(): void {
 
   // ---------- Settings & AI Assistant ----------
   handleTrusted('settings:get', () => publicSettings())
-  handleTrusted('settings:update', (_e, rawPatch: SettingsPatch): Settings => {
-    const res = applySettingsPatch(store.data.settings, rawPatch, app.isPackaged)
-    store.update((d) => {
-      d.settings = res.next
-    })
-    if (res.alwaysOnTopChanged) {
-      island?.setAlwaysOnTop(res.next.alwaysOnTop, 'screen-saver')
-    }
-    if (res.openAtLoginChanged) {
-      app.setLoginItemSettings({ openAtLogin: res.next.openAtLogin })
-    }
-    if (res.localeChanged) {
-      const m = getMessages(res.next.locale)
-      island?.setTitle(m.appName)
-      panel?.setTitle(m.appName)
-      tray?.setToolTip(m.tray.tooltip)
-    }
-    if (typeof rawPatch?.focusMinutes === 'number') {
-      focusCtrl.syncIdleDuration()
-    }
-    rebuildTrayMenu()
-    const pub = publicSettings()
-    broadcast('settings:changed', pub)
-    return pub
-  })
+  handleTrusted('settings:update', (_e, rawPatch: SettingsPatch): Settings => applySettingsUpdate(rawPatch))
   handleTrusted('app:getEnv', () => ({
     isPackaged: app.isPackaged,
     shortcut: SHORTCUT
