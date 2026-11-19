@@ -250,6 +250,7 @@ export const JA: AppMessages = {
     undoLabel: (label: string) => `「${label}」を削除`,
     undoRestoredBubble: '海から引き揚げたよ~',
     undoBtn: '戻す',
+    undoCloseTitle: '閉じる',
     seaThrowBubble: 'ドボン！桟橋から外したよ~',
     patBubbles: [
       'やあ~ なでなで ♪',

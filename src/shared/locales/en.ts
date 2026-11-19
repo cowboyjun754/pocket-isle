@@ -253,6 +253,7 @@ Recommend a matching combination for the user's mood or workspace vibe in Englis
     undoLabel: (label: string) => `Removed "${label}"`,
     undoRestoredBubble: 'Fished it back onto the pier~',
     undoBtn: 'Undo',
+    undoCloseTitle: 'Dismiss',
     seaThrowBubble: 'Splash! Removed from pier~',
     patBubbles: [
       'Hi there~ headpats ♪',

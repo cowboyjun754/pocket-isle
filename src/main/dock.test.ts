@@ -154,6 +154,36 @@ describe('Dock concurrency, quota & short-time undo', () => {
     expect((await dock.undoRemove()).ok).toBe(false)
   })
 
+  it('dismissUndo purges active undo batch, cleans copies, and ignores mismatched tokens', async () => {
+    const dataDir = makeTempDir('pocket-isle-data-')
+    const store = new Store(dataDir)
+    const undoEvents: Array<string | null> = []
+    const dock = new Dock(store, join(dataDir, 'dock-copies'), [], join(dataDir, 'drop.log'), {
+      undoTtlMs: 10_000,
+      onUndoChanged: (u) => undoEvents.push(u ? u.token : null)
+    })
+
+    await dock.addBufferItem('note.txt', Buffer.from('hello'), 'clipboard://text')
+    const item = dock.items[0]
+    await dock.remove([item.id])
+
+    const active = dock.getUndoState()
+    expect(active).not.toBeNull()
+    expect(existsSync(item.path)).toBe(true)
+
+    // Mismatched token must not dismiss the current undo window
+    await dock.dismissUndo('wrong-token')
+    expect(dock.hasActiveUndo()).toBe(true)
+    expect(existsSync(item.path)).toBe(true)
+
+    // Matching token clears undo state, emits null, and deletes the buffered copy
+    await dock.dismissUndo(active!.token)
+    expect(dock.hasActiveUndo()).toBe(false)
+    expect(dock.getUndoState()).toBeNull()
+    expect(existsSync(item.path)).toBe(false)
+    expect(undoEvents).toEqual([active!.token, null])
+  })
+
   it('evicts undo buffer copies automatically when space is needed for new writes', async () => {
     const dataDir = makeTempDir('pocket-isle-data-')
     const store = new Store(dataDir)

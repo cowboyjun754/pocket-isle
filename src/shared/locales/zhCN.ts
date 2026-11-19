@@ -242,6 +242,7 @@ export const ZH_CN = {
     undoLabel: (label: string) => `已移出「${label}」`,
     undoRestoredBubble: '捞回码头啦~',
     undoBtn: '撤销',
+    undoCloseTitle: '关闭提示',
     seaThrowBubble: '扑通！已移出码头~',
     patBubbles: [
       '嗨~ 摸摸头 ♪',

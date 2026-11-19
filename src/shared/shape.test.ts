@@ -36,10 +36,13 @@ describe('isInsideIsland (horizontal left pier + right island)', () => {
     expect(isInsideIsland(74, 48, 'right', 'full', true)).toBe(true)
     expect(isInsideIsland(172 + 74, 48, 'right', 'peek', true)).toBe(true)
     expect(isInsideIsland(75, 165, 'right', 'full', true)).toBe(true)
-    // Bottom undo pill hit region stays interactive in peek and full when hasUndo=true
+    // Bottom undo pill hit region stays interactive in peek and full when hasUndo=true (including right-edge close button)
     expect(isInsideIsland(172 + 80, 195, 'right', 'peek', false, false)).toBe(false)
     expect(isInsideIsland(172 + 80, 195, 'right', 'peek', false, true)).toBe(true)
+    expect(isInsideIsland(144, 195, 'left', 'peek', false, true)).toBe(true)
     expect(isInsideIsland(160, 226, 'right', 'full', false, true)).toBe(true)
+    expect(isInsideIsland(305, 212, 'right', 'full', false, true)).toBe(true)
+    expect(isInsideIsland(305, 212, 'left', 'full', false, true)).toBe(true)
   })
 
   it('lets transparent corners click through when expanded', () => {

@@ -866,6 +866,7 @@ export function Island(): JSX.Element {
           >
             <span className="island-undo-label">{im.undoLabel(undoState.label)}</span>
             <button
+              type="button"
               className="island-undo-btn"
               onClick={async (e) => {
                 e.stopPropagation()
@@ -878,6 +879,20 @@ export function Island(): JSX.Element {
               }}
             >
               {im.undoBtn}
+            </button>
+            <button
+              type="button"
+              className="island-undo-close"
+              title={im.undoCloseTitle}
+              aria-label={im.undoCloseTitle}
+              onClick={(e) => {
+                e.stopPropagation()
+                const token = undoState.token
+                setUndoState((prev) => (prev?.token === token ? null : prev))
+                void window.isle.dismissUndo(token)
+              }}
+            >
+              ✕
             </button>
           </div>
         )

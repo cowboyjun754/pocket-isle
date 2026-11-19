@@ -26,6 +26,7 @@ const api: IsleApi = {
   remove: (ids) => ipcRenderer.invoke('dock:remove', ids),
   clear: () => ipcRenderer.invoke('dock:clear'),
   undoRemove: (token) => ipcRenderer.invoke('dock:undoRemove', token),
+  dismissUndo: (token) => ipcRenderer.invoke('dock:dismissUndo', token),
   setItemGroup: (ids, group) => ipcRenderer.invoke('dock:setGroup', ids, group),
   open: (id) => ipcRenderer.invoke('dock:open', id),
   reveal: (id) => ipcRenderer.invoke('dock:reveal', id),

@@ -248,6 +248,7 @@ Recomienda una combinación acorde al estado de ánimo en español. Devuelve sol
     undoLabel: (label: string) => `"${label}" quitado`,
     undoRestoredBubble: '¡Rescatado del mar al muelle~',
     undoBtn: 'Deshacer',
+    undoCloseTitle: 'Cerrar',
     seaThrowBubble: '¡Plaf! Quitado del muelle~',
     patBubbles: [
       '¡Hola~ mimos para mí ♪',

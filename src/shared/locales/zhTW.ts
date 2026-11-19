@@ -243,6 +243,7 @@ export const ZH_TW: AppMessages = {
     undoLabel: (label: string) => `已移出「${label}」`,
     undoRestoredBubble: '撈回碼頭啦~',
     undoBtn: '復原',
+    undoCloseTitle: '關閉提示',
     seaThrowBubble: '撲通！已移出碼頭~',
     patBubbles: [
       '嗨~ 摸摸頭 ♪',

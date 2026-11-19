@@ -98,8 +98,8 @@ export const DOCK_NAMEPLATE_RECT = { x0: 6, y0: 18, x1: 156, y1: 102 }
 export const DOCK_SEA_TRANSITION_RECT = { x0: 36, y0: 150, x1: 132, y1: 188 }
 
 /** Bottom undo pill hit region in peek/full modes (prevents click-through while undo pill is active). */
-export const ISLAND_UNDO_PEEK_RECT = { x0: 6, y0: 174, x1: 146, y1: 218 }
-export const ISLAND_UNDO_FULL_RECT = { x0: 40, y0: 190, x1: 280, y1: 232 }
+export const ISLAND_UNDO_PEEK_RECT = { x0: 2, y0: 174, x1: 146, y1: 218 }
+export const ISLAND_UNDO_FULL_RECT = { x0: 6, y0: 190, x1: 314, y1: 232 }
 
 /** Returns true when stage coordinates fall on surrounding sea water (triggers water ripples). */
 export function isOnWater(localX: number, localY: number): boolean {

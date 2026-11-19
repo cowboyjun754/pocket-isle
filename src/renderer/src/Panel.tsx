@@ -748,7 +748,11 @@ export function Panel(): JSX.Element {
           confirmingClear={confirmingClear}
           setConfirmingClear={setConfirmingClear}
           dockUndo={dockUndo}
-          onDismissUndo={() => setDockUndo(null)}
+          onDismissUndo={() => {
+            const token = dockUndo?.token
+            setDockUndo(null)
+            void window.isle.dismissUndo(token)
+          }}
           onUndoRemove={handleUndoRemove}
           aiOrganizing={aiOrganizing}
           aiJointLoading={aiJointLoading}

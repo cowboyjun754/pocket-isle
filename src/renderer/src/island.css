@@ -880,16 +880,19 @@
 .island-undo-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 10px;
+  gap: 5px;
+  padding: 4px 6px 4px 10px;
   pointer-events: auto;
 }
 
 .island-undo-pill.toast-peek {
   max-width: 134px;
+  gap: 4px;
+  padding: 4px 5px 4px 8px;
 }
 
 .island-undo-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -910,6 +913,29 @@
 
 .island-undo-btn:hover {
   background: #d5e7c8;
+}
+
+.island-undo-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.island-undo-close:hover:not(:disabled) {
+  background: rgba(158, 122, 80, 0.16);
+  color: var(--ink);
 }
 
 /* ---------- Hover Controls ---------- */

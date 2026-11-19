@@ -363,6 +363,13 @@ export class Dock {
     })
   }
 
+  async dismissUndo(token?: string): Promise<void> {
+    return this.serialize(async () => {
+      if (!this.undoBatch || (token && this.undoBatch.token !== token)) return
+      await this.purgeUndoBatch(true)
+    })
+  }
+
   /** Synchronously purges pending undo-buffer copy dirs before app exit (records tombstones on failure). */
   flushPendingDeletesSync(): void {
     const batch = this.undoBatch

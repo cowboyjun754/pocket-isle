@@ -245,6 +245,7 @@ export const KO: AppMessages = {
     undoLabel: (label: string) => `"${label}" 제거됨`,
     undoRestoredBubble: '바다에서 건져 올렸어~',
     undoBtn: '되돌리기',
+    undoCloseTitle: '닫기',
     seaThrowBubble: '풍덩! 부두에서 비웠어~',
     patBubbles: [
       '안녕~ 쓰담쓰담 ♪',

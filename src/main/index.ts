@@ -792,6 +792,10 @@ function registerIpc(): void {
     return res
   })
 
+  handleTrusted('dock:dismissUndo', async (_e, token?: unknown) => {
+    await dock.dismissUndo(typeof token === 'string' ? token : undefined)
+  })
+
   handleTrusted('dock:setGroup', async (_e, ids: unknown, group: unknown) => {
     await dock.setGroup(strArr(ids), typeof group === 'string' ? group : undefined)
     broadcast('dock:changed')

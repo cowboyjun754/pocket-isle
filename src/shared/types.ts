@@ -220,6 +220,7 @@ export interface IsleApi {
   remove(ids: string[]): Promise<void>
   clear(): Promise<void>
   undoRemove(token?: string): Promise<UndoResult>
+  dismissUndo(token?: string): Promise<void>
   setItemGroup(ids: string[], group: string | undefined): Promise<void>
   /** Returns empty string on success, or an error message otherwise */
   open(id: string): Promise<string>
